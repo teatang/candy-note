@@ -82,14 +82,16 @@ class MockD1PreparedStatement {
 export class MockD1Database {
   readonly sqlite: DatabaseSync
 
-  constructor() {
+  constructor(options: { skipMigration?: boolean } = {}) {
     this.sqlite = new DatabaseSync(':memory:')
     this.sqlite.exec('PRAGMA foreign_keys = ON;')
-    const migrationSql = readFileSync(
-      resolve(process.cwd(), 'migrations/0001_init.sql'),
-      'utf-8'
-    )
-    this.sqlite.exec(migrationSql)
+    if (!options.skipMigration) {
+      const migrationSql = readFileSync(
+        resolve(process.cwd(), 'migrations/0001_init.sql'),
+        'utf-8'
+      )
+      this.sqlite.exec(migrationSql)
+    }
   }
 
   prepare(query: string): D1PreparedStatement {

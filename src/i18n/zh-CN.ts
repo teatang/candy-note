@@ -195,9 +195,10 @@ export default {
     roleUser: '普通用户',
     form: {
       username: '用户昵称（用户名）',
-      usernamePlaceholder: '2-32位字符，不可包含 @ 或空格',
+      // vue-i18n v11 中 @ 属于 linked message 保留字符，字面量必须使用 {'@'} 转义，否则会导致表单项渲染异常
+      usernamePlaceholder: "2-32位字符，不可包含 {'@'} 或空格",
       email: '电子邮箱',
-      emailPlaceholder: 'name@example.com',
+      emailPlaceholder: "name{'@'}example.com",
       password: '登录密码',
       passwordPlaceholderCreate: '请设置初始登录密码（至少 6 位）',
       passwordPlaceholderEdit: '留空则保持原密码不变',

@@ -11,6 +11,7 @@ import type {
 } from '../types'
 import { generateId, hashPassword } from '../utils/crypto'
 import { SEVEN_DAYS_MS } from '../utils/validation'
+import { ensureDatabaseSchema, isNoSuchTableError } from './schema'
 
 /**
  * 将数据库用户行转换为可安全返回给前端的 DTO（移除敏感哈希字段）
@@ -84,11 +85,22 @@ export function toNoteVersionDto(row: NoteVersionRow) {
 /**
  * 确保系统中至少存在一个初始化管理员账号
  * 仅在首次启动或无管理员存在时自动创建默认管理员（不开放前台注册）
+ * 若检测到数据库尚未执行建表迁移（no such table），则自动兜底建表后再继续初始化管理员
  */
 export async function ensureInitialAdmin(db: D1Database, env: Env): Promise<void> {
-  const existingAdmin = await db
-    .prepare(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`)
-    .first<{ id: string }>()
+  const queryAdmin = () =>
+    db.prepare(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`).first<{ id: string }>()
+
+  let existingAdmin: { id: string } | null = null
+  try {
+    existingAdmin = await queryAdmin()
+  } catch (err) {
+    if (!isNoSuchTableError(err)) {
+      throw err
+    }
+    await ensureDatabaseSchema(db)
+    existingAdmin = await queryAdmin()
+  }
 
   if (existingAdmin) return
 
@@ -120,14 +132,22 @@ export async function ensureInitialAdmin(db: D1Database, env: Env): Promise<void
 /**
  * 清理过期验证码、过期会话及超过 7 天的笔记历史版本
  * 可由定时任务触发，也可在关键 API 请求时按需惰性清理
+ * 若定时任务触发时数据库尚未建表，则自动创建基础表结构并安全跳过清理
  */
 export async function cleanupExpiredData(db: D1Database, now = Date.now()): Promise<void> {
   const sevenDaysAgo = now - SEVEN_DAYS_MS
-  await db.batch([
-    db.prepare(`DELETE FROM captchas WHERE expires_at < ?`).bind(now),
-    db.prepare(`DELETE FROM sessions WHERE expires_at < ?`).bind(now),
-    db.prepare(`DELETE FROM note_versions WHERE created_at < ?`).bind(sevenDaysAgo)
-  ])
+  try {
+    await db.batch([
+      db.prepare(`DELETE FROM captchas WHERE expires_at < ?`).bind(now),
+      db.prepare(`DELETE FROM sessions WHERE expires_at < ?`).bind(now),
+      db.prepare(`DELETE FROM note_versions WHERE created_at < ?`).bind(sevenDaysAgo)
+    ])
+  } catch (err) {
+    if (!isNoSuchTableError(err)) {
+      throw err
+    }
+    await ensureDatabaseSchema(db)
+  }
 }
 
 /**

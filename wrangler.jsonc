@@ -1,39 +1,52 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  // 糖果笔记 (Candy Note) Cloudflare Workers 配置文件
-  "name": "candy-note",
-  "main": "worker/index.ts",
-  "compatibility_date": "2025-03-01",
-  // 静态资源托管配置（Vue 构建产物 dist 目录，支持 SPA 路由回退）
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
-  },
-  // Cloudflare D1 关系型数据库绑定（免费套餐支持 5GB 存储与每日 500 万次读取）
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "candy-note-db",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
-    }
-  ],
-  // Cloudflare R2 对象存储绑定（用于保存笔记中拖入/上传的图片附件）
-  "r2_buckets": [
-    {
-      "binding": "R2_BUCKET",
-      "bucket_name": "candy-note-files"
-    }
-  ],
-  // 环境变量配置（建议生产环境通过 `wrangler secret put DEFAULT_ADMIN_PASSWORD` 覆盖默认管理员密码）
-  "vars": {
-    "DEFAULT_ADMIN_USERNAME": "admin",
-    "DEFAULT_ADMIN_EMAIL": "admin@candynote.local"
-  },
-  // 定时任务：每天凌晨 3 点（UTC）清理过期验证码、过期会话和超过 7 天的笔记历史版本
-  "triggers": {
-    "crons": ["0 3 * * *"]
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	// 糖果笔记 (Candy Note) Cloudflare Workers 配置文件
+	"name": "candy-note",
+	"main": "worker/index.ts",
+	"compatibility_date": "2025-03-01",
+	// 静态资源托管配置（Vue 构建产物 dist 目录，支持 SPA 路由回退）
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/api/*"
+		]
+	},
+	// Cloudflare D1 关系型数据库绑定（免费套餐支持 5GB 存储与每日 500 万次读取）
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "candy-note-db",
+			"database_id": "40673add-1c52-429b-915f-c41fd0baf91b",
+			"migrations_dir": "migrations"
+		},
+		{
+			"binding": "candy_note_db",
+			"database_name": "candy-note-db",
+			"database_id": "40673add-1c52-429b-915f-c41fd0baf91b"
+		}
+	],
+	// Cloudflare R2 对象存储绑定（用于保存笔记中拖入/上传的图片附件）
+	"r2_buckets": [
+		{
+			"binding": "R2_BUCKET",
+			"bucket_name": "candy-note-files"
+		},
+		{
+			"bucket_name": "candy-note-files",
+			"binding": "candy_note_files"
+		}
+	],
+	// 环境变量配置（建议生产环境通过 `wrangler secret put DEFAULT_ADMIN_PASSWORD` 覆盖默认管理员密码）
+	"vars": {
+		"DEFAULT_ADMIN_USERNAME": "admin",
+		"DEFAULT_ADMIN_EMAIL": "admin@candynote.local"
+	},
+	// 定时任务：每天凌晨 3 点（UTC）清理过期验证码、过期会话和超过 7 天的笔记历史版本
+	"triggers": {
+		"crons": [
+			"0 3 * * *"
+		]
+	}
 }

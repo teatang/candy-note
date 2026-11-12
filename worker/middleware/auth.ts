@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono'
 import { ensureInitialAdmin, toSafeUser } from '../db/repository'
+import { ensureDatabaseSchema, isNoSuchTableError } from '../db/schema'
 import type { AppEnv, SessionRow, UserRow } from '../types'
 import { apiError } from '../types'
 import { sha256Hex } from '../utils/crypto'
@@ -38,21 +39,34 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   const tokenHash = await sha256Hex(token)
   const now = Date.now()
 
-  const row = await c.env.DB.prepare(
-    `SELECT
-       s.id AS s_id, s.user_id AS s_user_id, s.token_hash AS s_token_hash,
-       s.remember_me AS s_remember_me, s.user_agent AS s_user_agent,
-       s.created_at AS s_created_at, s.expires_at AS s_expires_at, s.last_active_at AS s_last_active_at,
-       u.id AS u_id, u.username AS u_username, u.email AS u_email, u.password_hash AS u_password_hash,
-       u.role AS u_role, u.status AS u_status, u.must_change_password AS u_must_change_password,
-       u.created_at AS u_created_at, u.updated_at AS u_updated_at, u.last_login_at AS u_last_login_at
-     FROM sessions s
-     INNER JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = ?
-     LIMIT 1`
-  )
-    .bind(tokenHash)
-    .first<Record<string, unknown>>()
+  const querySession = () =>
+    c.env.DB.prepare(
+      `SELECT
+         s.id AS s_id, s.user_id AS s_user_id, s.token_hash AS s_token_hash,
+         s.remember_me AS s_remember_me, s.user_agent AS s_user_agent,
+         s.created_at AS s_created_at, s.expires_at AS s_expires_at, s.last_active_at AS s_last_active_at,
+         u.id AS u_id, u.username AS u_username, u.email AS u_email, u.password_hash AS u_password_hash,
+         u.role AS u_role, u.status AS u_status, u.must_change_password AS u_must_change_password,
+         u.created_at AS u_created_at, u.updated_at AS u_updated_at, u.last_login_at AS u_last_login_at
+       FROM sessions s
+       INNER JOIN users u ON u.id = s.user_id
+       WHERE s.token_hash = ?
+       LIMIT 1`
+    )
+      .bind(tokenHash)
+      .first<Record<string, unknown>>()
+
+  let row: Record<string, unknown> | null = null
+  try {
+    row = await querySession()
+  } catch (err) {
+    if (!isNoSuchTableError(err)) {
+      throw err
+    }
+    await ensureDatabaseSchema(c.env.DB)
+    await ensureInitialAdmin(c.env.DB, c.env)
+    row = await querySession()
+  }
 
   if (!row) {
     return apiError(c, 401, 'AUTH_UNAUTHORIZED', '登录会话无效，请重新登录')

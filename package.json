@@ -1,6 +1,6 @@
 {
   "name": "candy-note",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "license": "MIT",
   "private": true,
   "description": "糖果笔记 (Candy Note) - 基于 Cloudflare Workers + D1 + R2 的多用户云笔记网站",

@@ -16,8 +16,11 @@ export function decodeCaptchaTextFromDataUri(dataUri: string): string {
 /**
  * 创建隔离的 Worker 测试环境上下文（独立内存 SQLite D1 + 内存 R2）
  */
-export function createTestHarness(envOverrides: Partial<Env> = {}) {
-  const db = new MockD1Database()
+export function createTestHarness(
+  envOverrides: Partial<Env> = {},
+  options: { skipMigration?: boolean } = {}
+) {
+  const db = new MockD1Database({ skipMigration: options.skipMigration })
   const r2 = new MockR2Bucket()
   const app = createApp()
 

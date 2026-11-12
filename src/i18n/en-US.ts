@@ -195,9 +195,10 @@ export default {
     roleUser: 'User',
     form: {
       username: 'Nickname (Username)',
-      usernamePlaceholder: '2-32 chars, no @ or whitespace',
+      // Escape literal '@' for vue-i18n v11 linked message compiler syntax
+      usernamePlaceholder: "2-32 chars, no {'@'} or whitespace",
       email: 'Email',
-      emailPlaceholder: 'name@example.com',
+      emailPlaceholder: "name{'@'}example.com",
       password: 'Password',
       passwordPlaceholderCreate: 'Set initial password (min 6 chars)',
       passwordPlaceholderEdit: 'Leave blank to keep unchanged',

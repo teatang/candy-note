@@ -3,6 +3,7 @@ import ElementPlus from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { adminApi } from '@/api/admin'
 import { authApi } from '@/api/auth'
 import { filesApi } from '@/api/files'
 import { foldersApi } from '@/api/folders'
@@ -12,15 +13,17 @@ import FolderSidebar from '@/components/notes/FolderSidebar.vue'
 import NoteEditor from '@/components/notes/NoteEditor.vue'
 import NoteList from '@/components/notes/NoteList.vue'
 import { i18n } from '@/i18n'
+import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
 import { useNoteStore } from '@/stores/note'
+import AdminView from '@/views/AdminView.vue'
 import LoginView from '@/views/LoginView.vue'
 
 /**
  * 核心 UI 组件集成测试
  * 覆盖登录页（无注册入口、图片验证码加载与点击刷新、30天自动登录勾选）、
- * 笔记编辑器（Markdown 实时边写边预览、格式切换、全屏模式与 Esc 退出、移动端返回）、
- * 以及可折叠侧边栏与移动端抽屉交互。
+ * 笔记编辑器（Markdown 实时边写边预览、外链新标签页打开、格式切换、全屏模式与 Esc 退出、移动端返回）、
+ * 可折叠侧边栏与移动端抽屉交互，以及管理后台手动添加用户表单渲染与提交。
  */
 describe('Core Vue Components', () => {
   beforeEach(() => {
@@ -78,6 +81,8 @@ describe('Core Vue Components', () => {
     await vi.waitFor(() => {
       expect(captchaSpy).toHaveBeenCalledTimes(2)
     })
+
+    wrapper.unmount()
   })
 
   it('NoteEditor 应在 Markdown 模式下支持实时边写边预览并支持切换纯文本格式', async () => {
@@ -134,10 +139,15 @@ describe('Core Vue Components', () => {
     expect(preview.exists()).toBe(true)
     expect(preview.html()).toContain('<h1>实时标题</h1>')
 
-    // 修改 Markdown 内容时右侧预览应同步更新
-    await textarea.setValue('## 更新后的副标题\n\n**加粗内容**')
+    // 修改 Markdown 内容时右侧预览应同步更新，且外部链接自动具备新开标签页属性
+    await textarea.setValue('## 更新后的副标题\n\n**加粗内容** [Cloudflare](https://cloudflare.com)')
     expect(wrapper.find('.candy-markdown-body').html()).toContain('<h2>更新后的副标题</h2>')
     expect(wrapper.find('.candy-markdown-body').html()).toContain('<strong>加粗内容</strong>')
+    const previewLink = wrapper.find('.candy-markdown-body a')
+    expect(previewLink.exists()).toBe(true)
+    expect(previewLink.attributes('href')).toBe('https://cloudflare.com')
+    expect(previewLink.attributes('target')).toBe('_blank')
+    expect(previewLink.attributes('rel')).toContain('noopener')
 
     // 切换为普通文本模式后应关闭 Markdown 预览分栏并调用保存接口
     const plainBtn = wrapper
@@ -147,6 +157,8 @@ describe('Core Vue Components', () => {
     await plainBtn!.trigger('click')
     expect(updateSpy).toHaveBeenCalled()
     expect(wrapper.find('.candy-markdown-body').exists()).toBe(false)
+
+    wrapper.unmount()
   })
 
   it('NoteEditor 支持拖入图片上传至 R2 并在 Markdown 中自动插入图片链接', async () => {
@@ -204,6 +216,8 @@ describe('Core Vue Components', () => {
     await flushPromises()
     expect(uploadSpy).toHaveBeenCalledTimes(1)
     expect(wrapper.find('textarea').element.value).toContain('![demo.png](/api/files/r2-img-99)')
+
+    wrapper.unmount()
   })
 
   it('NoteEditor 应支持全屏编辑/查看切换、Esc 退出全屏及移动端返回列表', async () => {
@@ -318,5 +332,142 @@ describe('Core Vue Components', () => {
     headerWrapper.unmount()
     folderWrapper.unmount()
     noteListWrapper.unmount()
+  })
+
+  it('AdminView 点击手动添加用户时应明确展示用户昵称、电子邮箱与密码输入区域并支持提交创建', async () => {
+    vi.spyOn(adminApi, 'getStats').mockResolvedValue({
+      stats: {
+        users: { total: 1, active: 1, disabled: 0, admins: 1 },
+        notes: { total: 0, markdown: 0, plain: 0, pinned: 0 },
+        folders: { total: 0 },
+        versions: { totalLast7Days: 0 },
+        attachments: { totalCount: 0, totalSizeBytes: 0 },
+        recentLogins: [],
+        userSummaries: []
+      }
+    })
+    vi.spyOn(adminApi, 'listUsers').mockResolvedValue({
+      users: [
+        {
+          id: 'u-admin',
+          username: 'admin',
+          email: 'admin@candynote.local',
+          role: 'admin',
+          status: 'active',
+          mustChangePassword: false,
+          createdAt: 1,
+          updatedAt: 1,
+          lastLoginAt: null
+        }
+      ]
+    })
+    const createUserSpy = vi.spyOn(adminApi, 'createUser').mockResolvedValue({
+      user: {
+        id: 'u-new',
+        username: 'CandyTester',
+        email: 'tester@candynote.dev',
+        role: 'user',
+        status: 'active',
+        mustChangePassword: false,
+        createdAt: 2,
+        updatedAt: 2,
+        lastLoginAt: null
+      }
+    })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const authStore = useAuthStore()
+    authStore.user = {
+      id: 'u-admin',
+      username: 'admin',
+      email: 'admin@candynote.local',
+      role: 'admin',
+      status: 'active',
+      mustChangePassword: false,
+      createdAt: 1,
+      updatedAt: 1,
+      lastLoginAt: null
+    }
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', name: 'workspace', component: { template: '<div />' } },
+        { path: '/login', name: 'login', component: { template: '<div />' } },
+        { path: '/admin', name: 'admin', component: AdminView }
+      ]
+    })
+    await router.push('/admin')
+    await router.isReady()
+
+    const wrapper = mount(AdminView, {
+      attachTo: document.body,
+      global: { plugins: [pinia, router, i18n, ElementPlus] }
+    })
+
+    await flushPromises()
+
+    // 点击“手动添加用户”按钮打开新建用户弹窗
+    const addBtn = wrapper.findAll('button').find((b) => b.text().includes('手动添加用户'))
+    expect(addBtn).toBeDefined()
+    await addBtn!.trigger('click')
+    await flushPromises()
+
+    const dialog = document.body.querySelector('.el-dialog')
+    expect(dialog).not.toBeNull()
+    expect(dialog!.textContent).toContain('用户昵称（用户名）')
+    expect(dialog!.textContent).toContain('电子邮箱')
+    expect(dialog!.textContent).toContain('登录密码')
+
+    const usernameInput = dialog!.querySelector(
+      'input[placeholder*="2-32位字符"]'
+    ) as HTMLInputElement | null
+    const emailInput = dialog!.querySelector(
+      'input[placeholder="name@example.com"]'
+    ) as HTMLInputElement | null
+    const passwordInput = dialog!.querySelector('input[type="password"]') as HTMLInputElement | null
+
+    expect(usernameInput).not.toBeNull()
+    expect(emailInput).not.toBeNull()
+    expect(passwordInput).not.toBeNull()
+
+    usernameInput!.value = 'CandyTester'
+    usernameInput!.dispatchEvent(new Event('input'))
+    emailInput!.value = 'tester@candynote.dev'
+    emailInput!.dispatchEvent(new Event('input'))
+    passwordInput!.value = 'Secret123!'
+    passwordInput!.dispatchEvent(new Event('input'))
+    await flushPromises()
+
+    const form = dialog!.querySelector('form')!
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(createUserSpy).toHaveBeenCalledWith({
+      username: 'CandyTester',
+      email: 'tester@candynote.dev',
+      password: 'Secret123!',
+      role: 'user',
+      status: 'active'
+    })
+
+    // 切换英文文案后再次打开添加用户弹窗，同样应完整展示昵称与邮箱输入项
+    i18n.global.locale.value = 'en-US'
+    await flushPromises()
+    const addBtnEn = wrapper.findAll('button').find((b) => b.text().includes('Add User'))
+    expect(addBtnEn).toBeDefined()
+    await addBtnEn!.trigger('click')
+    await flushPromises()
+
+    const dialogEn = document.body.querySelector('.el-dialog')
+    expect(dialogEn).not.toBeNull()
+    expect(dialogEn!.textContent).toContain('Nickname (Username)')
+    expect(dialogEn!.textContent).toContain('Email')
+    expect(
+      dialogEn!.querySelector('input[placeholder*="no @ or whitespace"]')
+    ).not.toBeNull()
+
+    wrapper.unmount()
   })
 })

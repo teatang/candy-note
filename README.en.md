@@ -27,7 +27,7 @@ A minimalist, multi-user cloud note-taking web application powered by **Cloudfla
 
 4. **Dual Note Formats, Live Split Preview & Fullscreen Mode**
    - Supports both **Plain Text (`plain`)** and **Markdown (`markdown`)** notes.
-   - Markdown mode provides **Split Preview (edit & preview side-by-side)**, Edit-only, and Preview-only modes, formatting toolbar shortcuts, and XSS-safe rendering via `DOMPurify`.
+   - Markdown mode provides **Split Preview (edit & preview side-by-side)**, Edit-only, and Preview-only modes, formatting toolbar shortcuts, XSS-safe rendering via `DOMPurify`, adaptive Light/Dark code block styling, and automatic new-tab opening (`target="_blank" rel="noopener noreferrer"`) for external note URLs.
    - **Fullscreen Editing & Viewing**: Enter distraction-free fullscreen mode in both Markdown (Split/Edit/Preview) and Plain Text notes, with one-click toggle or `Esc` shortcut exit.
 
 5. **Folders, Drag-and-Drop Reordering, Pinning & R2 Image Uploads**
@@ -122,7 +122,7 @@ When no admin user exists on first startup, Candy Note automatically bootstraps 
 ### 5. Run All Unit Tests & Typechecks
 
 ```bash
-# Run all frontend and backend Vitest unit tests (15 test files / 36 tests)
+# Run all frontend and backend Vitest unit tests (15 test files / 40 tests)
 pnpm test
 
 # Run TypeScript typechecks for both frontend and worker
@@ -169,6 +169,10 @@ Released under the [MIT License](./LICENSE).
 
 ## 📝 Changelog
 
+- **v1.1.1**:
+  - Fixed Markdown preview code block colors in Light Mode by introducing distinct Light/Dark palettes for both code blocks and inline code;
+  - Updated Markdown rendering so external URLs and autolinks inside notes open safely in a new tab (`target="_blank" rel="noopener noreferrer"`) while preserving `#anchor`, `mailto:`, and `tel:` links;
+  - Fixed the Admin Console Add/Edit User dialog not rendering Nickname and Email inputs caused by unescaped `@` characters in `vue-i18n` v11 message strings, and expanded Vitest coverage across all i18n keys and the admin user form (15 test files / 40 tests).
 - **v1.1.0**:
   - Added full responsive mobile experience: slide-over folder drawer, mobile single-pane list/editor navigation with Back action, touch-friendly controls, and mobile-adapted dialogs, admin tables, and 7-day history drawer;
   - Added distraction-free fullscreen mode for both editing and viewing (Markdown & Plain Text) with `Esc` shortcut exit;

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { ensureInitialAdmin, toSafeUser } from '../db/repository'
+import { ensureDatabaseSchema, isNoSuchTableError } from '../db/schema'
 import { extractSessionToken, requireAuth } from '../middleware/auth'
 import type { AppEnv, UserRow } from '../types'
 import { apiError } from '../types'
@@ -84,13 +85,24 @@ authRoutes.get('/captcha', async (c) => {
   const codeHash = await sha256Hex(`${captchaId}:${code.toUpperCase()}`)
   const expiresAt = now + CAPTCHA_TTL_MS
 
-  // 惰性清理过期验证码后写入新验证码
-  await c.env.DB.batch([
-    c.env.DB.prepare(`DELETE FROM captchas WHERE expires_at < ?`).bind(now),
-    c.env.DB.prepare(
-      `INSERT INTO captchas (id, code_hash, expires_at, created_at) VALUES (?, ?, ?, ?)`
-    ).bind(captchaId, codeHash, expiresAt, now)
-  ])
+  // 惰性清理过期验证码后写入新验证码；若表结构尚未初始化则自动建表并重试
+  const writeCaptcha = () =>
+    c.env.DB.batch([
+      c.env.DB.prepare(`DELETE FROM captchas WHERE expires_at < ?`).bind(now),
+      c.env.DB.prepare(
+        `INSERT INTO captchas (id, code_hash, expires_at, created_at) VALUES (?, ?, ?, ?)`
+      ).bind(captchaId, codeHash, expiresAt, now)
+    ])
+
+  try {
+    await writeCaptcha()
+  } catch (err) {
+    if (!isNoSuchTableError(err)) {
+      throw err
+    }
+    await ensureDatabaseSchema(c.env.DB)
+    await writeCaptcha()
+  }
 
   const svg = renderCaptchaSvg(code)
   return c.json({
@@ -316,7 +328,14 @@ authRoutes.post('/logout', async (c) => {
   const token = extractSessionToken(c.req.raw)
   if (token) {
     const tokenHash = await sha256Hex(token)
-    await c.env.DB.prepare(`DELETE FROM sessions WHERE token_hash = ?`).bind(tokenHash).run()
+    try {
+      await c.env.DB.prepare(`DELETE FROM sessions WHERE token_hash = ?`).bind(tokenHash).run()
+    } catch (err) {
+      if (!isNoSuchTableError(err)) {
+        throw err
+      }
+      await ensureDatabaseSchema(c.env.DB)
+    }
   }
   c.header('Set-Cookie', buildClearSessionCookie(c.req.url))
   return c.json({ ok: true })
