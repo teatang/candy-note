@@ -35,6 +35,14 @@ export default {
     dark: '夜间模式',
     system: '跟随系统'
   },
+  layout: {
+    collapseFolders: '折叠文件夹栏',
+    expandFolders: '展开文件夹栏',
+    collapseNotes: '折叠笔记列表',
+    expandNotes: '展开笔记列表',
+    openFolders: '文件夹',
+    backToList: '返回列表'
+  },
   locale: {
     label: '语言',
     zhCN: '简体中文',
@@ -113,6 +121,8 @@ export default {
     viewModeSplit: '边写边预览',
     viewModeEdit: '纯编辑',
     viewModePreview: '纯预览',
+    enterFullscreen: '全屏模式',
+    exitFullscreen: '退出全屏',
     wordCount: '{count} 字符',
     folderLabel: '所属文件夹',
     deleteConfirmTitle: '删除笔记',

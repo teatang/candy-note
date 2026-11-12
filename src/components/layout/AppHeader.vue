@@ -2,7 +2,11 @@
 import {
   ArrowDown,
   Document,
+  Expand,
+  Files,
+  Fold,
   Key,
+  Menu,
   Setting,
   SwitchButton,
   User as UserIcon
@@ -16,13 +20,16 @@ import AppLogo from '@/components/common/AppLogo.vue'
 import LocaleToggle from '@/components/common/LocaleToggle.vue'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useLayoutStore } from '@/stores/layout'
 import { useLocaleStore } from '@/stores/locale'
 import { useNoteStore } from '@/stores/note'
 import { formatDateTime } from '@/utils/date'
 
 /**
  * 顶部极简导航栏组件
- * 包含品牌标识、主题切换、中英文切换、管理后台入口以及账号/长时间自动登录设置弹窗
+ * - 移动端提供文件夹抽屉入口
+ * - 桌面端工作区提供文件夹栏与笔记列表栏一键折叠/展开控制
+ * - 包含主题切换、中英文切换、管理后台入口以及账号/长时间自动登录设置弹窗
  */
 const { t } = useI18n()
 const route = useRoute()
@@ -30,6 +37,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const noteStore = useNoteStore()
 const localeStore = useLocaleStore()
+const layoutStore = useLayoutStore()
 
 const accountDialogOpen = ref(false)
 const updatingSession = ref(false)
@@ -75,42 +83,113 @@ async function handleChangePassword() {
 async function handleLogout() {
   await authStore.logout()
   noteStore.reset()
+  layoutStore.resetTransientLayout()
   await router.push('/login')
 }
 </script>
 
 <template>
   <header
-    class="flex h-13 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90"
+    class="flex h-13 shrink-0 items-center justify-between gap-2 border-b border-slate-200/80 bg-white/90 px-2.5 backdrop-blur sm:px-4 dark:border-slate-800 dark:bg-slate-900/90"
   >
-    <div class="flex items-center gap-3">
+    <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+      <!-- 移动端文件夹抽屉按钮 -->
+      <button
+        v-if="route.name === 'workspace'"
+        type="button"
+        data-testid="mobile-folders-btn"
+        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-rose-300 hover:text-rose-500 md:hidden dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+        :aria-label="t('layout.openFolders')"
+        @click="layoutStore.setMobileFoldersOpen(!layoutStore.mobileFoldersOpen)"
+      >
+        <el-icon><Menu /></el-icon>
+      </button>
+
+      <!-- 桌面端工作区侧边栏折叠控制按钮 -->
+      <div v-if="route.name === 'workspace'" class="hidden items-center gap-1 md:flex">
+        <el-tooltip
+          :content="
+            layoutStore.folderSidebarCollapsed
+              ? t('layout.expandFolders')
+              : t('layout.collapseFolders')
+          "
+          placement="bottom"
+        >
+          <button
+            type="button"
+            data-testid="toggle-folder-sidebar"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 transition dark:border-slate-700"
+            :class="
+              layoutStore.folderSidebarCollapsed
+                ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/40'
+                : 'bg-white text-slate-600 hover:border-rose-300 hover:text-rose-500 dark:bg-slate-800 dark:text-slate-300'
+            "
+            :aria-label="
+              layoutStore.folderSidebarCollapsed
+                ? t('layout.expandFolders')
+                : t('layout.collapseFolders')
+            "
+            @click="layoutStore.toggleFolderSidebar()"
+          >
+            <el-icon>
+              <Expand v-if="layoutStore.folderSidebarCollapsed" />
+              <Fold v-else />
+            </el-icon>
+          </button>
+        </el-tooltip>
+
+        <el-tooltip
+          :content="
+            layoutStore.noteListCollapsed ? t('layout.expandNotes') : t('layout.collapseNotes')
+          "
+          placement="bottom"
+        >
+          <button
+            type="button"
+            data-testid="toggle-note-list"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 transition dark:border-slate-700"
+            :class="
+              layoutStore.noteListCollapsed
+                ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/40'
+                : 'bg-white text-slate-600 hover:border-rose-300 hover:text-rose-500 dark:bg-slate-800 dark:text-slate-300'
+            "
+            :aria-label="
+              layoutStore.noteListCollapsed ? t('layout.expandNotes') : t('layout.collapseNotes')
+            "
+            @click="layoutStore.toggleNoteList()"
+          >
+            <el-icon><Files /></el-icon>
+          </button>
+        </el-tooltip>
+      </div>
+
       <router-link to="/" class="no-underline">
         <AppLogo />
       </router-link>
     </div>
 
-    <div class="flex items-center gap-2">
+    <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
       <!-- 管理员可在笔记工作区与管理后台之间快速切换 -->
       <el-button
         v-if="authStore.isAdmin && route.name !== 'admin'"
         size="small"
         plain
         type="primary"
-        class="!rounded-lg"
+        class="!rounded-lg !px-2 sm:!px-3"
         @click="router.push('/admin')"
       >
-        <el-icon class="mr-1"><Setting /></el-icon>
-        <span>{{ t('auth.goAdmin') }}</span>
+        <el-icon class="sm:mr-1"><Setting /></el-icon>
+        <span class="hidden sm:inline">{{ t('auth.goAdmin') }}</span>
       </el-button>
       <el-button
         v-else-if="route.name === 'admin'"
         size="small"
         plain
-        class="!rounded-lg"
+        class="!rounded-lg !px-2 sm:!px-3"
         @click="router.push('/')"
       >
-        <el-icon class="mr-1"><Document /></el-icon>
-        <span>{{ t('auth.goWorkspace') }}</span>
+        <el-icon class="sm:mr-1"><Document /></el-icon>
+        <span class="hidden sm:inline">{{ t('auth.goWorkspace') }}</span>
       </el-button>
 
       <ThemeToggle />
@@ -120,16 +199,16 @@ async function handleLogout() {
       <el-dropdown v-if="authStore.user" trigger="click">
         <button
           type="button"
-          class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-rose-300 hover:bg-rose-50/40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-rose-500/50"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-rose-300 hover:bg-rose-50/40 sm:gap-2 sm:px-2.5 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-rose-500/50"
         >
           <el-icon class="text-rose-500"><UserIcon /></el-icon>
-          <span class="max-w-28 truncate">{{ authStore.user.username }}</span>
+          <span class="hidden max-w-24 truncate sm:inline">{{ authStore.user.username }}</span>
           <el-icon class="text-slate-400"><ArrowDown /></el-icon>
         </button>
 
         <template #dropdown>
           <el-dropdown-menu>
-            <div class="px-3 py-2 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+            <div class="border-b border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
               <div class="font-medium text-slate-800 dark:text-slate-200">
                 {{ authStore.user.username }}
               </div>
@@ -166,7 +245,7 @@ async function handleLogout() {
     <el-dialog
       v-model="accountDialogOpen"
       :title="t('auth.accountSettings')"
-      width="440px"
+      width="min(440px, 92vw)"
       append-to-body
     >
       <div class="space-y-5">

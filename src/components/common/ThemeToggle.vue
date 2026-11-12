@@ -25,7 +25,7 @@ const options = computed<Array<{ value: ThemeMode; label: string }>>(() => [
       class="!rounded-lg !border-slate-200 dark:!border-slate-700 !bg-white dark:!bg-slate-800"
       :aria-label="t('theme.label')"
     >
-      <el-icon class="mr-1">
+      <el-icon class="sm:mr-1">
         <Sunny v-if="themeStore.mode === 'light'" />
         <Moon v-else-if="themeStore.mode === 'dark'" />
         <Monitor v-else />

@@ -1,5 +1,7 @@
 # 糖果笔记 · Candy Note
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-rose.svg)](./LICENSE)
+
 > 🌐 **语言 / Language**: **[简体中文](./README.md)** | [English](./README.en.md)
 
 基于 **Cloudflare 免费边缘服务（Workers + D1 + R2 + Static Assets）** 构建的多用户极简云笔记网站，采用 **TypeScript + Vite + Vue 3 + Pinia + Element Plus + Tailwind CSS v4** 开发，并全面配备 **Vitest** 前后端单元测试与中英文 **i18n** 国际化。
@@ -23,9 +25,10 @@
    - 登录页支持输入 **用户昵称或注册邮箱** + 密码 + **服务端 SVG 图片验证码**（一次性消费，防重放）。
    - 登录页及登录成功后均支持开启/关闭 **30 天长时间自动登录**（`HttpOnly` Cookie 持久化会话）。
 
-4. **双格式编辑器与实时预览**
+4. **双格式编辑器、实时预览与全屏模式**
    - 支持 **普通文本 (`plain`)** 与 **Markdown (`markdown`)** 两种笔记格式。
    - Markdown 模式支持 **边写边预览（分栏）**、纯编辑、纯预览三种视图切换，集成常用 Markdown 工具栏与 `DOMPurify` XSS 净化渲染。
+   - **编辑与查看全屏模式**：无论处于 Markdown（边写边预览 / 纯编辑 / 纯预览）还是普通文本模式，均可一键切换沉浸全屏，支持点击按钮或按 `Esc` 键快速退出。
 
 5. **文件夹、任意拖动排序、置顶与 R2 传图**
    - 支持多级文件夹管理，支持 **文件夹任意拖动排序**。
@@ -36,7 +39,11 @@
    - 每次创建、手动保存或节流自动保存都会生成版本快照，支持查看最近 **7 天内** 历史快照并与当前正文左右对比。
    - 点击回退前会自动为当前内容创建 `before_rollback` 安全备份，避免误操作。
 
-7. **极简日夜模式与中英文 i18n**
+7. **响应式移动体验与可折叠侧边栏**
+   - **可折叠侧边栏**：桌面端支持独立折叠/展开左侧「文件夹侧边栏」和中间「笔记列表栏」，折叠偏好自动持久化至 `localStorage`，为写作提供更宽敞的视野。
+   - **移动端友好适配**：小屏设备自动切换为「滑出式文件夹抽屉 + 列表/编辑器单栏切换」交互，并在编辑器顶部提供“返回列表”快捷按钮；同时对触摸设备（无需 hover 即可操作置顶与文件夹菜单）、Markdown 上下分栏高度、7 天历史抽屉、登录页及后台弹窗表格进行全面响应式适配。
+
+8. **极简日夜模式与中英文 i18n**
    - 支持 **日间模式 / 夜间模式 / 跟随系统** 无缝切换（同时驱动 Tailwind CSS 与 Element Plus 暗黑主题）。
    - 支持 **简体中文（默认）/ English** 实时切换。
 
@@ -55,6 +62,7 @@
 
 ```text
 candy-note/
+├── LICENSE                    # MIT 开源许可证
 ├── migrations/
 │   └── 0001_init.sql          # Cloudflare D1 初始化数据库表结构与索引
 ├── worker/                    # Cloudflare Worker 后端 (Hono + TypeScript)
@@ -66,10 +74,10 @@ candy-note/
 │   └── utils/                 # PBKDF2 加密、SVG 验证码、参数校验
 ├── src/                       # Vue 3 前端应用
 │   ├── api/                   # REST API 客户端封装
-│   ├── stores/                # Pinia 全局状态（theme/locale/auth/note/admin）
+│   ├── stores/                # Pinia 全局状态（theme/locale/layout/auth/note/admin）
 │   ├── i18n/                  # zh-CN (默认) 与 en-US 国际化文案
 │   ├── utils/                 # Markdown 安全渲染、日期格式化、拖动排序计算
-│   ├── components/            # 文件夹树、笔记列表、编辑器、7天版本抽屉、后台组件
+│   ├── components/            # 文件夹抽屉/侧边栏、笔记列表、全屏编辑器、7天版本抽屉、后台组件
 │   └── views/                 # LoginView / WorkspaceView / AdminView
 ├── tests/                     # Vitest 单元测试（worker + frontend）
 ├── wrangler.jsonc             # Cloudflare Workers / D1 / R2 部署配置
@@ -114,7 +122,7 @@ pnpm dev
 ### 5. 运行全部单元测试与类型检查
 
 ```bash
-# 执行前后端所有 Vitest 单元测试
+# 执行前后端所有 Vitest 单元测试（共 15 个测试文件 / 36 项测试用例）
 pnpm test
 
 # 前后端 TypeScript 类型检查
@@ -153,6 +161,17 @@ pnpm build
 
 ---
 
+## 📄 开源协议
+
+本项目基于 [MIT License](./LICENSE) 开源许可协议发布。
+
+---
+
 ## 📝 更新日志
 
+- **v1.1.0**：
+  - 全面优化响应式设计与移动端体验：移动端启用文件夹滑出抽屉、列表/编辑器单栏自适应切换、触摸设备直接操作入口及弹窗/抽屉/表格小屏适配；
+  - 新增编辑与查看全屏模式（Markdown 分栏/预览/纯编辑及普通文本通用），支持按 `Esc` 键快速退出；
+  - 新增桌面端文件夹侧边栏与笔记列表栏独立折叠/展开开关，并持久化记忆状态；
+  - 为项目添加 [MIT 开源协议](./LICENSE)，新增 `layout` 与 UI 交互单元测试（全套单元测试提升至 15 个文件 / 36 项测试）并更新中英文文档。
 - **v1.0.0**：完成糖果笔记（Candy Note）核心多用户云笔记系统，涵盖后台统计与手动用户管理、SVG 图片验证码登录（支持昵称/邮箱及 30 天长时间自动登录）、日夜模式与跟随系统、Markdown 边写边预览与普通文本双格式、文件夹与笔记任意拖动排序、置顶、R2 拖拽/粘贴上传图片、7 天内历史版本回退、中英文 i18n（默认中文）及 14 组 Vitest 单元测试。

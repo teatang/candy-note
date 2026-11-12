@@ -35,6 +35,14 @@ export default {
     dark: 'Dark Mode',
     system: 'Follow System'
   },
+  layout: {
+    collapseFolders: 'Collapse Folders',
+    expandFolders: 'Expand Folders',
+    collapseNotes: 'Collapse Note List',
+    expandNotes: 'Expand Note List',
+    openFolders: 'Folders',
+    backToList: 'Back to Notes'
+  },
   locale: {
     label: 'Language',
     zhCN: '简体中文',
@@ -113,6 +121,8 @@ export default {
     viewModeSplit: 'Split Preview',
     viewModeEdit: 'Edit Only',
     viewModePreview: 'Preview Only',
+    enterFullscreen: 'Fullscreen',
+    exitFullscreen: 'Exit Fullscreen',
     wordCount: '{count} chars',
     folderLabel: 'Folder',
     deleteConfirmTitle: 'Delete Note',

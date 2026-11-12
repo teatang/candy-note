@@ -75,7 +75,7 @@ onMounted(() => {
   <div class="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
     <AppHeader />
 
-    <div class="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-6">
+    <div class="mx-auto w-full max-w-6xl flex-1 space-y-5 px-3 py-4 sm:space-y-6 sm:px-6 sm:py-6">
       <!-- 初始化默认密码安全提示 -->
       <div
         v-if="authStore.user?.mustChangePassword"
@@ -112,7 +112,7 @@ onMounted(() => {
 
       <!-- 用户管理与资源统计页签 -->
       <div
-        class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs dark:border-slate-800 dark:bg-slate-900"
+        class="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-2xs sm:p-5 dark:border-slate-800 dark:bg-slate-900"
       >
         <el-tabs v-model="activeTab">
           <el-tab-pane :label="t('admin.tabs.users')" name="users">
@@ -123,13 +123,13 @@ onMounted(() => {
                 clearable
                 :prefix-icon="Search"
                 :placeholder="t('admin.searchUsers')"
-                class="!w-64"
+                class="!w-full sm:!w-64"
                 @input="adminStore.fetchUsers()"
               />
               <el-select
                 v-model="adminStore.statusFilter"
                 size="small"
-                class="!w-36"
+                class="!w-full sm:!w-36"
                 @change="adminStore.fetchUsers()"
               >
                 <el-option :label="t('admin.allStatuses')" value="all" />
@@ -138,7 +138,8 @@ onMounted(() => {
               </el-select>
             </div>
 
-            <el-table :data="adminStore.users" v-loading="adminStore.loading" stripe>
+            <div class="overflow-x-auto">
+              <el-table :data="adminStore.users" v-loading="adminStore.loading" stripe>
               <el-table-column :label="t('admin.table.user')" min-width="200">
                 <template #default="{ row }">
                   <div class="font-medium text-slate-800 dark:text-slate-100">
@@ -205,53 +206,56 @@ onMounted(() => {
                 </template>
               </el-table-column>
             </el-table>
+            </div>
           </el-tab-pane>
 
           <el-tab-pane :label="t('admin.tabs.usage')" name="usage">
-            <el-table :data="adminStore.stats?.userSummaries ?? []" stripe>
-              <el-table-column :label="t('admin.table.user')" min-width="200">
-                <template #default="{ row }">
-                  <div class="font-medium text-slate-800 dark:text-slate-100">
-                    {{ row.username }}
-                  </div>
-                  <div class="text-xs text-slate-400">{{ row.email }}</div>
-                </template>
-              </el-table-column>
-              <el-table-column
-                prop="noteCount"
-                :label="t('admin.table.notesCount')"
-                width="100"
-                align="center"
-              />
-              <el-table-column
-                prop="folderCount"
-                :label="t('admin.table.foldersCount')"
-                width="100"
-                align="center"
-              />
-              <el-table-column
-                prop="attachmentCount"
-                :label="t('admin.table.attachmentsCount')"
-                width="100"
-                align="center"
-              />
-              <el-table-column :label="t('admin.table.storageUsed')" width="130">
-                <template #default="{ row }">
-                  <span class="text-xs font-mono">{{ formatBytes(row.storageBytes) }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column :label="t('admin.table.lastLogin')" min-width="160">
-                <template #default="{ row }">
-                  <span class="text-xs text-slate-500">
-                    {{
-                      row.lastLoginAt
-                        ? formatDateTime(row.lastLoginAt, localeStore.locale)
-                        : t('admin.table.neverLogin')
-                    }}
-                  </span>
-                </template>
-              </el-table-column>
-            </el-table>
+            <div class="overflow-x-auto">
+              <el-table :data="adminStore.stats?.userSummaries ?? []" stripe>
+                <el-table-column :label="t('admin.table.user')" min-width="200">
+                  <template #default="{ row }">
+                    <div class="font-medium text-slate-800 dark:text-slate-100">
+                      {{ row.username }}
+                    </div>
+                    <div class="text-xs text-slate-400">{{ row.email }}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  prop="noteCount"
+                  :label="t('admin.table.notesCount')"
+                  width="100"
+                  align="center"
+                />
+                <el-table-column
+                  prop="folderCount"
+                  :label="t('admin.table.foldersCount')"
+                  width="100"
+                  align="center"
+                />
+                <el-table-column
+                  prop="attachmentCount"
+                  :label="t('admin.table.attachmentsCount')"
+                  width="100"
+                  align="center"
+                />
+                <el-table-column :label="t('admin.table.storageUsed')" width="130">
+                  <template #default="{ row }">
+                    <span class="text-xs font-mono">{{ formatBytes(row.storageBytes) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column :label="t('admin.table.lastLogin')" min-width="160">
+                  <template #default="{ row }">
+                    <span class="text-xs text-slate-500">
+                      {{
+                        row.lastLoginAt
+                          ? formatDateTime(row.lastLoginAt, localeStore.locale)
+                          : t('admin.table.neverLogin')
+                      }}
+                    </span>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </el-tab-pane>
         </el-tabs>
       </div>

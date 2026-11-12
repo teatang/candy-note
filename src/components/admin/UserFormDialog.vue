@@ -85,7 +85,7 @@ async function handleSubmit() {
   <el-dialog
     :model-value="modelValue"
     :title="editingUser ? t('admin.editUser') : t('admin.addUser')"
-    width="440px"
+    width="min(440px, 92vw)"
     append-to-body
     @update:model-value="(val: boolean) => emit('update:modelValue', val)"
   >
@@ -119,7 +119,7 @@ async function handleSubmit() {
         />
       </el-form-item>
 
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <el-form-item :label="t('admin.form.role')">
           <el-select v-model="form.role" class="w-full">
             <el-option :label="t('admin.roleUser')" value="user" />

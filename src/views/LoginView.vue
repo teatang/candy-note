@@ -83,16 +83,16 @@ onMounted(() => {
 
 <template>
   <div
-    class="relative flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-rose-50/70 via-white to-amber-50/60 px-4 py-10 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
+    class="relative flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-rose-50/70 via-white to-amber-50/60 px-4 pt-16 pb-10 sm:py-10 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
   >
     <!-- 右上角主题与语言切换控件 -->
-    <div class="absolute top-4 right-4 flex items-center gap-2">
+    <div class="absolute top-3 right-3 flex items-center gap-2 sm:top-4 sm:right-4">
       <ThemeToggle />
       <LocaleToggle />
     </div>
 
     <div
-      class="w-full max-w-md rounded-3xl border border-slate-200/80 bg-white/95 p-8 shadow-xl shadow-rose-500/5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95"
+      class="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-xl shadow-rose-500/5 backdrop-blur sm:rounded-3xl sm:p-8 dark:border-slate-800 dark:bg-slate-900/95"
     >
       <div class="mb-6 flex flex-col items-center text-center">
         <AppLogo />
@@ -139,7 +139,7 @@ onMounted(() => {
             />
             <button
               type="button"
-              class="group relative flex h-10 w-34 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 transition hover:border-rose-300 dark:border-slate-700 dark:bg-slate-800"
+              class="group relative flex h-10 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 transition hover:border-rose-300 sm:w-34 dark:border-slate-700 dark:bg-slate-800"
               :title="t('auth.captchaRefreshTip')"
               @click="refreshCaptcha"
             >

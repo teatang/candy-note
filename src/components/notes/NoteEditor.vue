@@ -1,17 +1,21 @@
 <script setup lang="ts">
 import {
+  ArrowLeft,
   Check,
   Clock,
   Delete,
   Document,
+  FullScreen,
   Picture,
+  ScaleToOriginal,
   Top,
   Upload
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { resolveApiErrorMessage } from '@/api/client'
+import { useLayoutStore } from '@/stores/layout'
 import { useNoteStore } from '@/stores/note'
 import type { NoteFormat } from '@/types'
 import { formatBytes } from '@/utils/date'
@@ -22,11 +26,14 @@ import VersionHistoryDrawer from './VersionHistoryDrawer.vue'
  * 笔记核心编辑器组件
  * - 支持普通文本 (plain) 与 Markdown (markdown) 双格式实时切换
  * - Markdown 模式支持分栏边写边预览 (split)、纯编辑 (edit)、纯预览 (preview)
+ * - 支持编辑与预览全屏模式（点击按钮进入，支持按钮或按 Esc 键退出）
+ * - 支持响应式布局：移动端提供返回笔记列表栏操作与自适应分栏高度
  * - 支持直接拖入图片、粘贴剪贴板图片或点击上传图片保存至 Cloudflare R2
  * - 内置节流自动保存 + Ctrl/Cmd+S 手动保存 + 一周历史版本抽屉入口
  */
 const { t } = useI18n()
 const noteStore = useNoteStore()
+const layoutStore = useLayoutStore()
 
 const draftTitle = ref('')
 const draftContent = ref('')
@@ -58,6 +65,9 @@ watch(
     } else {
       draftTitle.value = ''
       draftContent.value = ''
+      if (layoutStore.isEditorFullscreen) {
+        layoutStore.toggleEditorFullscreen(false)
+      }
     }
     setTimeout(() => {
       syncingFromStore = false
@@ -66,8 +76,20 @@ watch(
   { immediate: true }
 )
 
+/** 全局按键监听：全屏模式下按 Esc 键快速退出（历史抽屉未打开时） */
+function handleWindowKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && layoutStore.isEditorFullscreen && !historyOpen.value) {
+    layoutStore.toggleEditorFullscreen(false)
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleWindowKeydown)
+})
+
 onBeforeUnmount(() => {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  window.removeEventListener('keydown', handleWindowKeydown)
 })
 
 const renderedMarkdownHtml = computed(() => {
@@ -153,6 +175,12 @@ async function handleFolderChange(folderId: string | null) {
   }
 }
 
+/** 移动端返回笔记列表（若处于全屏则先退出全屏） */
+function handleMobileBack() {
+  layoutStore.toggleEditorFullscreen(false)
+  layoutStore.setMobilePane('list')
+}
+
 async function handleDeleteNote() {
   const note = noteStore.activeNote
   if (!note) return
@@ -167,6 +195,9 @@ async function handleDeleteNote() {
       }
     )
     await noteStore.deleteNote(note.id)
+    if (!noteStore.activeNote) {
+      handleMobileBack()
+    }
     ElMessage.success(t('common.success'))
   } catch (err) {
     if (err !== 'cancel' && err !== 'close') {
@@ -302,7 +333,18 @@ function handleKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <main class="relative flex min-w-90 flex-1 flex-col bg-white dark:bg-slate-950">
+  <main
+    data-testid="note-editor"
+    class="min-w-0 w-full flex-col bg-white dark:bg-slate-950"
+    :class="
+      layoutStore.isEditorFullscreen
+        ? 'fixed inset-0 z-50 flex h-full'
+        : [
+            'relative flex-1',
+            layoutStore.mobilePane === 'editor' ? 'flex' : 'hidden md:flex'
+          ]
+    "
+  >
     <!-- 未选中笔记空状态 -->
     <div
       v-if="!noteStore.activeNote"
@@ -319,20 +361,36 @@ function handleKeydown(e: KeyboardEvent) {
       <p class="mt-1.5 max-w-md text-xs leading-relaxed text-slate-400">
         {{ t('notes.emptyEditorSubtitle') }}
       </p>
+      <el-button size="small" class="mt-4 md:hidden" @click="handleMobileBack">
+        <el-icon class="mr-1"><ArrowLeft /></el-icon>
+        <span>{{ t('layout.backToList') }}</span>
+      </el-button>
     </div>
 
     <!-- 已选中笔记编辑器主体 -->
     <template v-else>
       <!-- 顶部属性与操作栏 -->
       <div
-        class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 px-5 py-2.5 dark:border-slate-800"
+        class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 px-3 py-2 sm:px-5 sm:py-2.5 dark:border-slate-800"
       >
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <!-- 移动端返回笔记列表按钮 -->
+          <button
+            type="button"
+            data-testid="mobile-back-to-list"
+            class="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 transition hover:border-rose-300 hover:text-rose-500 md:hidden dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            :aria-label="t('layout.backToList')"
+            @click="handleMobileBack"
+          >
+            <el-icon><ArrowLeft /></el-icon>
+            <span>{{ t('layout.backToList') }}</span>
+          </button>
+
           <!-- 所属文件夹选择 -->
           <el-select
             :model-value="draftFolderId ?? ''"
             size="small"
-            class="!w-36"
+            class="!w-28 sm:!w-36"
             @change="(val: string) => handleFolderChange(val || null)"
           >
             <el-option :label="t('folders.uncategorized')" value="" />
@@ -348,7 +406,7 @@ function handleKeydown(e: KeyboardEvent) {
           <div class="flex items-center rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800">
             <button
               type="button"
-              class="rounded-md px-2.5 py-1 text-xs transition"
+              class="rounded-md px-2 py-1 text-xs transition sm:px-2.5"
               :class="
                 draftFormat === 'markdown'
                   ? 'bg-white font-medium text-rose-600 shadow-xs dark:bg-slate-700 dark:text-rose-300'
@@ -360,7 +418,7 @@ function handleKeydown(e: KeyboardEvent) {
             </button>
             <button
               type="button"
-              class="rounded-md px-2.5 py-1 text-xs transition"
+              class="rounded-md px-2 py-1 text-xs transition sm:px-2.5"
               :class="
                 draftFormat === 'plain'
                   ? 'bg-white font-medium text-rose-600 shadow-xs dark:bg-slate-700 dark:text-rose-300'
@@ -398,8 +456,8 @@ function handleKeydown(e: KeyboardEvent) {
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-slate-400">
+        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <span class="text-[11px] text-slate-400 sm:text-xs">
             <template v-if="noteStore.savingState === 'saving'">{{ t('common.saving') }}</template>
             <template v-else-if="hasUnsavedChanges">{{ t('common.unsaved') }}</template>
             <template v-else>{{ t('common.saved') }}</template>
@@ -413,19 +471,48 @@ function handleKeydown(e: KeyboardEvent) {
               size="small"
               :type="noteStore.activeNote.isPinned ? 'primary' : 'default'"
               plain
-              class="!rounded-lg"
+              class="!m-0 !rounded-lg"
               @click="noteStore.togglePin(noteStore.activeNote)"
             >
               <el-icon><Top /></el-icon>
             </el-button>
           </el-tooltip>
 
-          <el-button size="small" plain class="!rounded-lg" @click="historyOpen = true">
-            <el-icon class="mr-1"><Clock /></el-icon>
+          <el-button size="small" plain class="!m-0 !rounded-lg" @click="historyOpen = true">
+            <el-icon class="lg:mr-1"><Clock /></el-icon>
             <span class="hidden lg:inline">{{ t('versions.title') }}</span>
           </el-button>
 
-          <el-button size="small" type="primary" class="!rounded-lg" @click="handleManualSave">
+          <!-- 全屏编辑/查看切换按钮（Markdown 与普通文本模式均支持） -->
+          <el-tooltip
+            :content="
+              layoutStore.isEditorFullscreen
+                ? t('notes.exitFullscreen')
+                : t('notes.enterFullscreen')
+            "
+            placement="top"
+          >
+            <el-button
+              data-testid="toggle-fullscreen"
+              size="small"
+              :type="layoutStore.isEditorFullscreen ? 'primary' : 'default'"
+              plain
+              class="!m-0 !rounded-lg"
+              :aria-label="
+                layoutStore.isEditorFullscreen
+                  ? t('notes.exitFullscreen')
+                  : t('notes.enterFullscreen')
+              "
+              @click="layoutStore.toggleEditorFullscreen()"
+            >
+              <el-icon>
+                <ScaleToOriginal v-if="layoutStore.isEditorFullscreen" />
+                <FullScreen v-else />
+              </el-icon>
+            </el-button>
+          </el-tooltip>
+
+          <el-button size="small" type="primary" class="!m-0 !rounded-lg" @click="handleManualSave">
             <el-icon class="mr-1"><Check /></el-icon>
             <span>{{ t('common.save') }}</span>
           </el-button>
@@ -434,7 +521,7 @@ function handleKeydown(e: KeyboardEvent) {
             size="small"
             type="danger"
             plain
-            class="!rounded-lg"
+            class="!m-0 !rounded-lg"
             @click="handleDeleteNote"
           >
             <el-icon><Delete /></el-icon>
@@ -443,13 +530,13 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- 笔记标题栏 -->
-      <div class="border-b border-slate-100 px-6 py-3 dark:border-slate-800/80">
+      <div class="border-b border-slate-100 px-4 py-2.5 sm:px-6 sm:py-3 dark:border-slate-800/80">
         <input
           v-model="draftTitle"
           type="text"
           :placeholder="t('notes.titlePlaceholder')"
           maxlength="200"
-          class="w-full bg-transparent text-xl font-bold text-slate-900 placeholder-slate-300 outline-none dark:text-slate-100 dark:placeholder-slate-600"
+          class="w-full bg-transparent text-lg font-bold text-slate-900 placeholder-slate-300 outline-none sm:text-xl dark:text-slate-100 dark:placeholder-slate-600"
           @input="scheduleAutoSave"
           @keydown="handleKeydown"
         />
@@ -457,7 +544,7 @@ function handleKeydown(e: KeyboardEvent) {
 
       <!-- 快捷编辑工具栏（含 R2 图片上传按钮） -->
       <div
-        class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-5 py-1.5 dark:border-slate-800 dark:bg-slate-900/60"
+        class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-3 py-1.5 sm:px-5 dark:border-slate-800 dark:bg-slate-900/60"
       >
         <div class="flex flex-wrap items-center gap-1">
           <template v-if="draftFormat === 'markdown' && viewMode !== 'preview'">
@@ -581,14 +668,18 @@ function handleKeydown(e: KeyboardEvent) {
         <div
           v-if="draftFormat === 'markdown'"
           class="grid min-h-0 flex-1"
-          :class="viewMode === 'split' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'"
+          :class="
+            viewMode === 'split'
+              ? 'grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1'
+              : 'grid-cols-1'
+          "
         >
           <textarea
             v-if="viewMode === 'split' || viewMode === 'edit'"
             ref="textareaRef"
             v-model="draftContent"
             :placeholder="t('notes.contentPlaceholderMarkdown')"
-            class="h-full w-full resize-none border-0 bg-transparent p-6 font-mono text-sm leading-7 text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-600"
+            class="min-h-0 h-full w-full resize-none border-0 bg-transparent p-4 font-mono text-sm leading-7 text-slate-800 outline-none placeholder:text-slate-400 sm:p-6 dark:text-slate-200 dark:placeholder:text-slate-600"
             :class="
               viewMode === 'split'
                 ? 'border-b md:border-b-0 md:border-r border-slate-200/80 dark:border-slate-800'
@@ -601,7 +692,7 @@ function handleKeydown(e: KeyboardEvent) {
 
           <div
             v-if="viewMode === 'split' || viewMode === 'preview'"
-            class="candy-markdown-body h-full overflow-y-auto p-6 text-slate-800 dark:text-slate-200"
+            class="candy-markdown-body min-h-0 h-full overflow-y-auto p-4 text-slate-800 sm:p-6 dark:text-slate-200"
             v-html="renderedMarkdownHtml"
           />
         </div>
@@ -612,7 +703,7 @@ function handleKeydown(e: KeyboardEvent) {
           ref="textareaRef"
           v-model="draftContent"
           :placeholder="t('notes.contentPlaceholderPlain')"
-          class="min-h-0 w-full flex-1 resize-none border-0 bg-transparent p-6 text-sm leading-7 text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-600"
+          class="min-h-0 w-full flex-1 resize-none border-0 bg-transparent p-4 text-sm leading-7 text-slate-800 outline-none placeholder:text-slate-400 sm:p-6 dark:text-slate-200 dark:placeholder:text-slate-600"
           @input="scheduleAutoSave"
           @paste="handlePaste"
           @keydown="handleKeydown"
@@ -621,7 +712,7 @@ function handleKeydown(e: KeyboardEvent) {
         <!-- 当前笔记关联的 R2 图片附件条 -->
         <div
           v-if="noteStore.attachments.length > 0"
-          class="border-t border-slate-200/80 bg-slate-50/70 px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900/70"
+          class="border-t border-slate-200/80 bg-slate-50/70 px-3 py-2 sm:px-5 sm:py-2.5 dark:border-slate-800 dark:bg-slate-900/70"
         >
           <div class="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
             {{ t('notes.attachmentsTitle', { count: noteStore.attachments.length }) }}

@@ -1,8 +1,10 @@
 # Candy Note · 糖果笔记
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-rose.svg)](./LICENSE)
+
 > 🌐 **Language / 语言**: [简体中文](./README.md) | **[English](./README.en.md)**
 
-A minimalist, multi-user cloud note-taking web application powered by **Cloudflare Free Tier services (Workers + D1 + R2 + Static Assets)**. Built with **TypeScript + Vite + Vue 3 + Pinia + Element Plus + Tailwind CSS v4**, featuring full **Vitest** unit test coverage and **Chinese / English i18n** (Simplified Chinese by default).
+A minimalist, multi-user cloud note-taking web application powered by **Cloudflare Free Tier services (Workers + D1 + R2 + Static Assets)**. Built with **TypeScript + Vite + Vue 3 + Pinia + Element Plus + Tailwind CSS v4**, featuring comprehensive **Vitest** unit test coverage and **Chinese / English i18n** (Simplified Chinese by default).
 
 ---
 
@@ -23,9 +25,10 @@ A minimalist, multi-user cloud note-taking web application powered by **Cloudfla
    - Supports login with **Nickname (Username) or Email** + Password + **Server-generated SVG Image Captcha** (single-use, case-insensitive).
    - Supports **30-day long-term auto-login** via checkbox at login AND post-login one-click toggle in the workspace/account settings (`HttpOnly` persistent cookie).
 
-4. **Dual Note Formats & Live Split Preview**
+4. **Dual Note Formats, Live Split Preview & Fullscreen Mode**
    - Supports both **Plain Text (`plain`)** and **Markdown (`markdown`)** notes.
    - Markdown mode provides **Split Preview (edit & preview side-by-side)**, Edit-only, and Preview-only modes, formatting toolbar shortcuts, and XSS-safe rendering via `DOMPurify`.
+   - **Fullscreen Editing & Viewing**: Enter distraction-free fullscreen mode in both Markdown (Split/Edit/Preview) and Plain Text notes, with one-click toggle or `Esc` shortcut exit.
 
 5. **Folders, Drag-and-Drop Reordering, Pinning & R2 Image Uploads**
    - Nested folder management with **drag-and-drop folder reordering**.
@@ -36,7 +39,11 @@ A minimalist, multi-user cloud note-taking web application powered by **Cloudfla
    - Automatically records snapshots on creation, manual save, and throttled auto-save.
    - Browse snapshots from the **past 7 days**, compare side-by-side against current content, and restore with one click (automatically creating a `before_rollback` backup snapshot first).
 
-7. **Minimalist Light/Dark/System Theme & i18n**
+7. **Responsive Mobile UX & Collapsible Sidebars**
+   - **Collapsible Sidebars**: Independently collapse/expand the desktop Folder Sidebar and Note List from the top header or pane header, with state persisted in `localStorage`.
+   - **Mobile-First Optimization**: Automatically adapts on small viewports to a slide-over folder drawer and single-pane list/editor navigation (with a quick "Back to Notes" header action), touch-friendly pin/folder controls, responsive Markdown stacked split view, and mobile-sized dialogs, tables, and history drawer.
+
+8. **Minimalist Light/Dark/System Theme & i18n**
    - Switch seamlessly between **Light**, **Dark**, and **Follow System** modes (synced across Tailwind CSS and Element Plus).
    - Real-time switching between **Simplified Chinese (default)** and **English**.
 
@@ -55,6 +62,7 @@ A minimalist, multi-user cloud note-taking web application powered by **Cloudfla
 
 ```text
 candy-note/
+├── LICENSE                    # MIT Open Source License
 ├── migrations/
 │   └── 0001_init.sql          # Cloudflare D1 schema and indexes
 ├── worker/                    # Cloudflare Worker backend (Hono + TypeScript)
@@ -66,10 +74,10 @@ candy-note/
 │   └── utils/                 # PBKDF2 crypto, SVG captcha, validation
 ├── src/                       # Vue 3 frontend
 │   ├── api/                   # REST API client wrappers
-│   ├── stores/                # Pinia stores (theme/locale/auth/note/admin)
+│   ├── stores/                # Pinia stores (theme/locale/layout/auth/note/admin)
 │   ├── i18n/                  # zh-CN (default) & en-US locales
 │   ├── utils/                 # Safe Markdown renderer, date/byte helpers, reorder
-│   ├── components/            # FolderSidebar, NoteList, NoteEditor, VersionHistoryDrawer, Admin
+│   ├── components/            # FolderSidebar drawer, NoteList, Fullscreen NoteEditor, VersionHistoryDrawer, Admin
 │   └── views/                 # LoginView / WorkspaceView / AdminView
 ├── tests/                     # Vitest unit & integration tests (worker + frontend)
 ├── wrangler.jsonc             # Cloudflare Workers / D1 / R2 deployment config
@@ -114,7 +122,7 @@ When no admin user exists on first startup, Candy Note automatically bootstraps 
 ### 5. Run All Unit Tests & Typechecks
 
 ```bash
-# Run all frontend and backend Vitest unit tests
+# Run all frontend and backend Vitest unit tests (15 test files / 36 tests)
 pnpm test
 
 # Run TypeScript typechecks for both frontend and worker
@@ -153,6 +161,17 @@ pnpm build
 
 ---
 
+## 📄 License
+
+Released under the [MIT License](./LICENSE).
+
+---
+
 ## 📝 Changelog
 
+- **v1.1.0**:
+  - Added full responsive mobile experience: slide-over folder drawer, mobile single-pane list/editor navigation with Back action, touch-friendly controls, and mobile-adapted dialogs, admin tables, and 7-day history drawer;
+  - Added distraction-free fullscreen mode for both editing and viewing (Markdown & Plain Text) with `Esc` shortcut exit;
+  - Added independently collapsible desktop Folder Sidebar and Note List with persisted preferences;
+  - Added [MIT License](./LICENSE), expanded unit tests (15 test files / 36 tests), and updated Chinese/English READMEs.
 - **v1.0.0**: Initial complete release of Candy Note featuring admin overview & manual user management, SVG captcha login (nickname/email + 30-day auto-login), Light/Dark/System themes, Markdown split-pane preview & Plain Text notes, drag-and-drop folder/note reordering, note pinning, drag/paste R2 image uploads, 7-day version history rollback, Chinese/English i18n (Chinese default), and comprehensive Vitest unit tests.

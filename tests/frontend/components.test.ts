@@ -7,18 +7,24 @@ import { authApi } from '@/api/auth'
 import { filesApi } from '@/api/files'
 import { foldersApi } from '@/api/folders'
 import { notesApi } from '@/api/notes'
+import AppHeader from '@/components/layout/AppHeader.vue'
+import FolderSidebar from '@/components/notes/FolderSidebar.vue'
 import NoteEditor from '@/components/notes/NoteEditor.vue'
+import NoteList from '@/components/notes/NoteList.vue'
 import { i18n } from '@/i18n'
+import { useLayoutStore } from '@/stores/layout'
 import { useNoteStore } from '@/stores/note'
 import LoginView from '@/views/LoginView.vue'
 
 /**
  * 核心 UI 组件集成测试
- * 覆盖登录页（无注册入口、图片验证码加载与点击刷新、30天自动登录勾选）
- * 以及笔记编辑器（Markdown 实时边写边预览、格式切换）
+ * 覆盖登录页（无注册入口、图片验证码加载与点击刷新、30天自动登录勾选）、
+ * 笔记编辑器（Markdown 实时边写边预览、格式切换、全屏模式与 Esc 退出、移动端返回）、
+ * 以及可折叠侧边栏与移动端抽屉交互。
  */
 describe('Core Vue Components', () => {
   beforeEach(() => {
+    localStorage.clear()
     setActivePinia(createPinia())
     i18n.global.locale.value = 'zh-CN'
     vi.restoreAllMocks()
@@ -198,5 +204,119 @@ describe('Core Vue Components', () => {
     await flushPromises()
     expect(uploadSpy).toHaveBeenCalledTimes(1)
     expect(wrapper.find('textarea').element.value).toContain('![demo.png](/api/files/r2-img-99)')
+  })
+
+  it('NoteEditor 应支持全屏编辑/查看切换、Esc 退出全屏及移动端返回列表', async () => {
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({
+      notes: [
+        {
+          id: 'note-fs-1',
+          userId: 'u-1',
+          folderId: null,
+          title: '全屏测试笔记',
+          content: '测试内容',
+          format: 'markdown',
+          isPinned: false,
+          pinnedAt: null,
+          sortOrder: 0,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      ]
+    })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    const layoutStore = useLayoutStore()
+    await noteStore.loadWorkspace()
+    layoutStore.setMobilePane('editor')
+
+    const wrapper = mount(NoteEditor, {
+      global: {
+        plugins: [pinia, i18n, ElementPlus]
+      }
+    })
+
+    const editorMain = wrapper.find('[data-testid="note-editor"]')
+    expect(layoutStore.isEditorFullscreen).toBe(false)
+    expect(editorMain.classes()).not.toContain('fixed')
+
+    // 点击全屏按钮进入全屏模式
+    await wrapper.find('[data-testid="toggle-fullscreen"]').trigger('click')
+    expect(layoutStore.isEditorFullscreen).toBe(true)
+    expect(editorMain.classes()).toContain('fixed')
+    expect(editorMain.classes()).toContain('z-50')
+
+    // 触发 Esc 键退出全屏模式
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(layoutStore.isEditorFullscreen).toBe(false)
+    expect(editorMain.classes()).not.toContain('fixed')
+
+    // 再次全屏后点击移动端返回列表按钮，应同时退出全屏并切回 list 视图
+    await wrapper.find('[data-testid="toggle-fullscreen"]').trigger('click')
+    expect(layoutStore.isEditorFullscreen).toBe(true)
+    await wrapper.find('[data-testid="mobile-back-to-list"]').trigger('click')
+    expect(layoutStore.isEditorFullscreen).toBe(false)
+    expect(layoutStore.mobilePane).toBe('list')
+
+    wrapper.unmount()
+  })
+
+  it('AppHeader、FolderSidebar 与 NoteList 应联动支持折叠侧边栏与移动端文件夹抽屉', async () => {
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [] })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    const layoutStore = useLayoutStore()
+    await noteStore.loadWorkspace()
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', name: 'workspace', component: { template: '<div />' } },
+        { path: '/login', name: 'login', component: { template: '<div />' } },
+        { path: '/admin', name: 'admin', component: { template: '<div />' } }
+      ]
+    })
+    await router.push('/')
+    await router.isReady()
+
+    const headerWrapper = mount(AppHeader, {
+      global: { plugins: [pinia, router, i18n, ElementPlus] }
+    })
+    const folderWrapper = mount(FolderSidebar, {
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    const noteListWrapper = mount(NoteList, {
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+
+    // 桌面端折叠文件夹侧边栏
+    expect(folderWrapper.find('[data-testid="folder-sidebar"]').classes()).toContain('md:w-60')
+    await headerWrapper.find('[data-testid="toggle-folder-sidebar"]').trigger('click')
+    expect(layoutStore.folderSidebarCollapsed).toBe(true)
+    expect(folderWrapper.find('[data-testid="folder-sidebar"]').classes()).toContain('md:w-0')
+
+    // 桌面端折叠笔记列表栏
+    expect(noteListWrapper.find('[data-testid="note-list-sidebar"]').classes()).toContain('md:w-76')
+    await headerWrapper.find('[data-testid="toggle-note-list"]').trigger('click')
+    expect(layoutStore.noteListCollapsed).toBe(true)
+    expect(noteListWrapper.find('[data-testid="note-list-sidebar"]').classes()).toContain('md:w-0')
+
+    // 移动端点击菜单按钮打开文件夹抽屉
+    expect(layoutStore.mobileFoldersOpen).toBe(false)
+    await headerWrapper.find('[data-testid="mobile-folders-btn"]').trigger('click')
+    expect(layoutStore.mobileFoldersOpen).toBe(true)
+    expect(folderWrapper.find('[data-testid="folder-sidebar"]').classes()).toContain('translate-x-0')
+
+    headerWrapper.unmount()
+    folderWrapper.unmount()
+    noteListWrapper.unmount()
   })
 })

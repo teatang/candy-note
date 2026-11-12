@@ -1,9 +1,19 @@
 <script setup lang="ts">
-import { Document, DocumentAdd, EditPen, Rank, Search, Top } from '@element-plus/icons-vue'
+import {
+  Document,
+  DocumentAdd,
+  EditPen,
+  Fold,
+  FolderOpened,
+  Rank,
+  Search,
+  Top
+} from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { resolveApiErrorMessage } from '@/api/client'
+import { useLayoutStore } from '@/stores/layout'
 import { useLocaleStore } from '@/stores/locale'
 import { useNoteStore } from '@/stores/note'
 import type { Note, NoteFormat } from '@/types'
@@ -11,22 +21,37 @@ import { formatRelativeTime } from '@/utils/date'
 
 /**
  * 笔记列表栏组件
- * - 支持新建 Markdown 与普通文本两种格式笔记
- * - 支持关键词实时搜索与格式筛选
- * - 置顶笔记独立展示在顶部，支持一键置顶/取消置顶
- * - 支持任意上下拖动排序，也可拖动笔记到左侧文件夹
+ * - 桌面端支持一键折叠/展开
+ * - 移动端全宽展示，点击或新建笔记后自动切入编辑器视图
+ * - 支持关键词搜索、格式筛选、置顶排序与拖动排序
  */
 const { t } = useI18n()
 const noteStore = useNoteStore()
 const localeStore = useLocaleStore()
+const layoutStore = useLayoutStore()
 
 const draggingNoteId = ref<string | null>(null)
 const dragOverNoteId = ref<string | null>(null)
 const dragPosition = ref<'before' | 'after' | null>(null)
 
+const currentFolderTitle = computed(() => {
+  if (noteStore.activeFolderId === 'all') return t('folders.allNotes')
+  if (noteStore.activeFolderId === 'uncategorized') return t('folders.uncategorized')
+  return (
+    noteStore.folders.find((f) => f.id === noteStore.activeFolderId)?.name ||
+    t('notes.listTitle')
+  )
+})
+
+async function handleSelectNote(noteId: string) {
+  await noteStore.selectNote(noteId)
+  layoutStore.setMobilePane('editor')
+}
+
 async function handleCreate(format: NoteFormat) {
   try {
     await noteStore.createNote(format)
+    layoutStore.setMobilePane('editor')
   } catch (err) {
     ElMessage.error(resolveApiErrorMessage(err))
   }
@@ -90,9 +115,42 @@ async function onDrop(e: DragEvent, target: Note) {
 
 <template>
   <section
-    class="flex h-full w-76 shrink-0 flex-col border-r border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900"
+    data-testid="note-list-sidebar"
+    class="h-full shrink-0 flex-col border-r border-slate-200/80 bg-white transition-all duration-200 dark:border-slate-800 dark:bg-slate-900"
+    :class="[
+      layoutStore.mobilePane === 'list' ? 'flex w-full' : 'hidden md:flex',
+      layoutStore.noteListCollapsed
+        ? 'md:w-0 md:overflow-hidden md:border-r-0 md:opacity-0'
+        : 'md:w-76 md:opacity-100'
+    ]"
   >
-    <!-- 顶部新建按钮与搜索过滤区 -->
+    <!-- 顶部栏：当前文件夹标题 + 移动端快速切换文件夹 + 桌面端折叠按钮 -->
+    <div
+      class="flex items-center justify-between border-b border-slate-100 px-3 pt-2.5 pb-2 dark:border-slate-800"
+    >
+      <button
+        type="button"
+        class="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600 md:pointer-events-none dark:text-slate-300"
+        @click="layoutStore.setMobileFoldersOpen(true)"
+      >
+        <el-icon class="text-amber-500 md:hidden"><FolderOpened /></el-icon>
+        <span class="truncate">{{ currentFolderTitle }}</span>
+        <span class="text-slate-400">({{ noteStore.filteredNotes.length }})</span>
+      </button>
+
+      <el-tooltip :content="t('layout.collapseNotes')" placement="top">
+        <button
+          type="button"
+          class="hidden h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 md:flex dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          :aria-label="t('layout.collapseNotes')"
+          @click="layoutStore.toggleNoteList(true)"
+        >
+          <el-icon :size="13"><Fold /></el-icon>
+        </button>
+      </el-tooltip>
+    </div>
+
+    <!-- 新建按钮与搜索过滤区 -->
     <div class="space-y-2.5 border-b border-slate-100 p-3 dark:border-slate-800">
       <div class="grid grid-cols-2 gap-2">
         <el-button
@@ -179,7 +237,7 @@ async function onDrop(e: DragEvent, target: Note) {
               ? 'border-b-2 border-b-rose-500'
               : ''
           ]"
-          @click="noteStore.selectNote(note.id)"
+          @click="handleSelectNote(note.id)"
           @dragstart="(e) => onDragStart(e, note)"
           @dragend="onDragEnd"
           @dragover="(e) => onDragOver(e, note)"
@@ -250,7 +308,7 @@ async function onDrop(e: DragEvent, target: Note) {
               ? 'border-b-2 border-b-rose-500'
               : ''
           ]"
-          @click="noteStore.selectNote(note.id)"
+          @click="handleSelectNote(note.id)"
           @dragstart="(e) => onDragStart(e, note)"
           @dragend="onDragEnd"
           @dragover="(e) => onDragOver(e, note)"
@@ -269,7 +327,7 @@ async function onDrop(e: DragEvent, target: Note) {
             <el-tooltip :content="t('notes.pin')" placement="top">
               <button
                 type="button"
-                class="hidden h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 group-hover:flex dark:hover:bg-rose-500/15"
+                class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 md:hidden md:group-hover:flex dark:hover:bg-rose-500/15"
                 @click="(e) => handleTogglePin(e, note)"
               >
                 <el-icon :size="12"><Top /></el-icon>

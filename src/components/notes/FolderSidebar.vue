@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import {
+  Close,
   Delete,
   Edit,
+  Fold,
   Folder as FolderIcon,
   FolderAdd,
   FolderOpened,
@@ -12,18 +14,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { resolveApiErrorMessage } from '@/api/client'
+import { useLayoutStore } from '@/stores/layout'
 import { useNoteStore } from '@/stores/note'
 import type { Folder } from '@/types'
 
 /**
  * 文件夹管理侧边栏组件
- * - 支持全部笔记、未分类视图切换
- * - 支持多级文件夹创建、重命名、删除
- * - 支持文件夹自身任意拖动排序
- * - 支持将笔记列表中的笔记拖入目标文件夹或未分类区域
+ * - 桌面端支持一键折叠/展开（状态持久化）
+ * - 移动端表现为滑出式抽屉并支持点击遮罩关闭
+ * - 支持多级文件夹创建、重命名、删除、自身拖动排序及接收拖入笔记
  */
 const { t } = useI18n()
 const noteStore = useNoteStore()
+const layoutStore = useLayoutStore()
 
 const folderDialogVisible = ref(false)
 const folderDialogMode = ref<'create' | 'rename'>('create')
@@ -37,6 +40,13 @@ const draggingFolderId = ref<string | null>(null)
 /** 高亮显示拖放目标文件夹及方向 */
 const dropTargetId = ref<string | null>(null)
 const dropPosition = ref<'before' | 'after' | 'into' | null>(null)
+
+async function handleSelectFolder(folderId: string) {
+  await noteStore.selectFolder(folderId)
+  // 移动端选中文件夹后自动收起抽屉并切回笔记列表
+  layoutStore.setMobileFoldersOpen(false)
+  layoutStore.setMobilePane('list')
+}
 
 function openCreateFolder(parentId: string | null = null) {
   folderDialogMode.value = 'create'
@@ -159,22 +169,61 @@ async function handleFolderDrop(e: DragEvent, targetId: string | 'uncategorized'
 </script>
 
 <template>
+  <!-- 移动端抽屉背景遮罩 -->
+  <div
+    v-if="layoutStore.mobileFoldersOpen"
+    class="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs md:hidden"
+    @click="layoutStore.setMobileFoldersOpen(false)"
+  />
+
   <aside
-    class="flex h-full w-60 shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/50"
+    data-testid="folder-sidebar"
+    class="fixed inset-y-0 left-0 z-50 flex h-full w-72 max-w-[85vw] shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/95 transition-all duration-200 dark:border-slate-800 dark:bg-slate-900/95 md:static md:z-auto md:bg-slate-50/70 dark:md:bg-slate-900/50"
+    :class="[
+      layoutStore.mobileFoldersOpen
+        ? 'translate-x-0 shadow-2xl'
+        : '-translate-x-full md:translate-x-0',
+      layoutStore.folderSidebarCollapsed
+        ? 'md:w-0 md:overflow-hidden md:border-r-0 md:opacity-0'
+        : 'md:w-60 md:opacity-100'
+    ]"
   >
     <div class="flex items-center justify-between px-3.5 pt-3.5 pb-2">
       <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
         {{ t('folders.title') }}
       </span>
-      <el-tooltip :content="t('folders.newFolder')" placement="top">
+      <div class="flex items-center gap-1">
+        <el-tooltip :content="t('folders.newFolder')" placement="top">
+          <button
+            type="button"
+            class="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-500 dark:text-slate-400 dark:hover:bg-rose-500/10"
+            @click="openCreateFolder(null)"
+          >
+            <el-icon><FolderAdd /></el-icon>
+          </button>
+        </el-tooltip>
+
+        <!-- 桌面端在侧边栏顶部直接折叠 -->
+        <el-tooltip :content="t('layout.collapseFolders')" placement="top">
+          <button
+            type="button"
+            class="hidden h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200/70 hover:text-slate-700 md:flex dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            :aria-label="t('layout.collapseFolders')"
+            @click="layoutStore.toggleFolderSidebar(true)"
+          >
+            <el-icon><Fold /></el-icon>
+          </button>
+        </el-tooltip>
+
+        <!-- 移动端关闭抽屉 -->
         <button
           type="button"
-          class="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-500 dark:text-slate-400 dark:hover:bg-rose-500/10"
-          @click="openCreateFolder(null)"
+          class="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/70 md:hidden dark:hover:bg-slate-800"
+          @click="layoutStore.setMobileFoldersOpen(false)"
         >
-          <el-icon><FolderAdd /></el-icon>
+          <el-icon><Close /></el-icon>
         </button>
-      </el-tooltip>
+      </div>
     </div>
 
     <div class="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
@@ -187,7 +236,7 @@ async function handleFolderDrop(e: DragEvent, targetId: string | 'uncategorized'
             ? 'bg-rose-50 font-medium text-rose-600 dark:bg-rose-500/15 dark:text-rose-300'
             : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/80'
         "
-        @click="noteStore.selectFolder('all')"
+        @click="handleSelectFolder('all')"
       >
         <span class="flex items-center gap-2 truncate">
           <el-icon><Tickets /></el-icon>
@@ -206,7 +255,7 @@ async function handleFolderDrop(e: DragEvent, targetId: string | 'uncategorized'
             : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/80',
           dropTargetId === 'uncategorized' ? 'ring-2 ring-rose-400 bg-rose-50/80 dark:bg-rose-500/20' : ''
         ]"
-        @click="noteStore.selectFolder('uncategorized')"
+        @click="handleSelectFolder('uncategorized')"
         @dragover="(e) => handleFolderDragOver(e, 'uncategorized')"
         @dragleave="dropTargetId = null"
         @drop="(e) => handleFolderDrop(e, 'uncategorized')"
@@ -246,7 +295,7 @@ async function handleFolderDrop(e: DragEvent, targetId: string | 'uncategorized'
             ? 'border-b-2 border-rose-500'
             : ''
         ]"
-        @click="noteStore.selectFolder(folder.id)"
+        @click="handleSelectFolder(folder.id)"
         @dragstart="(e) => handleFolderDragStart(e, folder.id)"
         @dragend="handleFolderDragEnd"
         @dragover="(e) => handleFolderDragOver(e, folder.id)"
@@ -259,13 +308,13 @@ async function handleFolderDrop(e: DragEvent, targetId: string | 'uncategorized'
         </div>
 
         <div class="flex items-center gap-1">
-          <span class="text-xs text-slate-400 group-hover:hidden">
+          <span class="hidden text-xs text-slate-400 md:inline md:group-hover:hidden">
             {{ noteStore.noteCountMap.map.get(folder.id) ?? 0 }}
           </span>
           <el-dropdown trigger="click" @click.stop>
             <button
               type="button"
-              class="hidden h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200/80 hover:text-slate-700 group-hover:flex dark:hover:bg-slate-700 dark:hover:text-slate-200"
+              class="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200/80 hover:text-slate-700 md:hidden md:group-hover:flex dark:hover:bg-slate-700 dark:hover:text-slate-200"
               @click.stop
             >
               <el-icon :size="13"><MoreFilled /></el-icon>
@@ -301,7 +350,7 @@ async function handleFolderDrop(e: DragEvent, targetId: string | 'uncategorized'
     <el-dialog
       v-model="folderDialogVisible"
       :title="folderDialogMode === 'create' ? t('folders.newFolder') : t('folders.renameTitle')"
-      width="380px"
+      width="min(380px, 92vw)"
       append-to-body
     >
       <el-form @submit.prevent="submitFolderDialog">

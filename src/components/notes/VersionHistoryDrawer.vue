@@ -86,7 +86,7 @@ async function handleRollback() {
   <el-drawer
     :model-value="modelValue"
     :title="t('versions.title')"
-    size="740px"
+    size="min(740px, 100vw)"
     append-to-body
     @update:model-value="(val: boolean) => emit('update:modelValue', val)"
   >
@@ -109,7 +109,7 @@ async function handleRollback() {
       <div v-else class="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-12">
         <!-- 左侧：一周内版本时间线 -->
         <div
-          class="md:col-span-4 space-y-2 overflow-y-auto pr-1 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 pb-3 md:pb-0"
+          class="max-h-44 space-y-2 overflow-y-auto border-b border-slate-200 pr-1 pb-3 md:col-span-4 md:max-h-none md:border-b-0 md:border-r md:pb-0 dark:border-slate-800"
         >
           <button
             v-for="ver in noteStore.versions"
@@ -142,7 +142,7 @@ async function handleRollback() {
 
         <!-- 右侧：预览与回退操作区 -->
         <div v-if="selectedVersion" class="md:col-span-8 flex min-h-0 flex-col gap-3">
-          <div class="flex items-center justify-between">
+          <div class="flex flex-wrap items-center justify-between gap-2">
             <el-radio-group v-model="viewTab" size="small">
               <el-radio-button value="preview">{{ t('versions.previewTab') }}</el-radio-button>
               <el-radio-button value="compare">{{ t('versions.compareTab') }}</el-radio-button>
@@ -169,7 +169,10 @@ async function handleRollback() {
             <pre class="whitespace-pre-wrap font-mono text-xs leading-6 text-slate-700 dark:text-slate-300">{{ selectedVersion.content }}</pre>
           </div>
 
-          <div v-else class="grid flex-1 grid-cols-2 gap-3 overflow-hidden">
+          <div
+            v-else
+            class="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto sm:grid-cols-2 sm:overflow-hidden"
+          >
             <div
               class="flex flex-col overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900"
             >
