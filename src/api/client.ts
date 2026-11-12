@@ -6,12 +6,14 @@ import { i18n } from '@/i18n'
 export class ApiRequestError extends Error {
   code: string
   status: number
+  data?: unknown
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, data?: unknown) {
     super(message)
     this.name = 'ApiRequestError'
     this.code = code
     this.status = status
+    this.data = data
   }
 }
 
@@ -80,7 +82,7 @@ export async function apiRequest<T>(
     if (res.status === 401 && !skipUnauthorizedCallback && unauthorizedHandler) {
       unauthorizedHandler()
     }
-    throw new ApiRequestError(code, message, res.status)
+    throw new ApiRequestError(code, message, res.status, data ?? undefined)
   }
 
   return (data ?? {}) as T

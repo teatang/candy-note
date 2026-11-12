@@ -1,10 +1,11 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiRequestError } from '@/api/client'
 import { filesApi } from '@/api/files'
 import { foldersApi } from '@/api/folders'
 import { notesApi } from '@/api/notes'
 import { useAuthStore } from '@/stores/auth'
-import { getEditorStateStorageKey, useNoteStore } from '@/stores/note'
+import { getEditorStateStorageKey, NoteConflictError, useNoteStore } from '@/stores/note'
 import type { Folder, Note, User } from '@/types'
 
 /**
@@ -273,5 +274,70 @@ describe('Note Workspace Store', () => {
     await store.createNote('markdown')
     expect(store.activeNoteId).toBe('n-new')
     expect(store.markdownViewMode).toBe('split')
+  })
+
+  it('saveNote 在多设备并发修改导致线上版本不一致时应抛出 NoteConflictError 而不覆盖本地基线', async () => {
+    const store = useNoteStore()
+    await store.loadWorkspace()
+    await store.selectNote('n-1')
+
+    const serverNote: Note = {
+      ...sampleNotes[0],
+      content: '# 另一台设备更新后的内容',
+      updatedAt: 999
+    }
+
+    vi.spyOn(notesApi, 'update').mockRejectedValueOnce(
+      new ApiRequestError('NOTE_CONFLICT', '线上笔记已被其他设备更新', 409, { serverNote })
+    )
+
+    await expect(
+      store.saveNote('n-1', {
+        title: sampleNotes[0].title,
+        content: '# 本地编辑内容',
+        format: 'markdown',
+        changeType: 'save'
+      })
+    ).rejects.toBeInstanceOf(NoteConflictError)
+
+    expect(store.savingState).toBe('conflict')
+    expect(store.activeNote?.content).toBe('# Pin')
+
+    // 若线上仅变更了置顶/文件夹等元信息、正文与标题与本地基线完全一致，则自动同步元信息后重试保存
+    const metadataOnlyServerNote: Note = {
+      ...sampleNotes[0],
+      isPinned: false,
+      pinnedAt: null,
+      updatedAt: 888
+    }
+    const updateSpy = vi
+      .spyOn(notesApi, 'update')
+      .mockRejectedValueOnce(
+        new ApiRequestError('NOTE_CONFLICT', 'conflict', 409, {
+          serverNote: metadataOnlyServerNote
+        })
+      )
+      .mockResolvedValueOnce({
+        note: {
+          ...metadataOnlyServerNote,
+          content: '# 本地新内容',
+          updatedAt: 889
+        }
+      })
+
+    const saved = await store.saveNote('n-1', {
+      title: sampleNotes[0].title,
+      content: '# 本地新内容',
+      format: 'markdown',
+      changeType: 'save'
+    })
+    expect(updateSpy).toHaveBeenCalledTimes(2)
+    expect(saved.content).toBe('# 本地新内容')
+    expect(store.savingState).toBe('saved')
+
+    // applyServerNote 可直接应用线上最新版本
+    store.applyServerNote(serverNote)
+    expect(store.activeNote?.content).toBe('# 另一台设备更新后的内容')
+    expect(store.activeNote?.updatedAt).toBe(999)
   })
 })

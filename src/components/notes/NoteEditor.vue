@@ -9,17 +9,19 @@ import {
   Picture,
   ScaleToOriginal,
   Top,
-  Upload
+  Upload,
+  WarningFilled
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { resolveApiErrorMessage } from '@/api/client'
 import { useLayoutStore } from '@/stores/layout'
-import { useNoteStore } from '@/stores/note'
-import type { MarkdownViewMode, NoteFormat } from '@/types'
+import { NoteConflictError, useNoteStore } from '@/stores/note'
+import type { MarkdownViewMode, Note, NoteFormat } from '@/types'
 import { formatBytes } from '@/utils/date'
 import { renderMarkdownSafe } from '@/utils/markdown'
+import NoteConflictDialog, { type NoteConflictPayload } from './NoteConflictDialog.vue'
 import VersionHistoryDrawer from './VersionHistoryDrawer.vue'
 
 /**
@@ -45,6 +47,10 @@ const viewMode = computed<MarkdownViewMode>({
 })
 const isDraggingFile = ref(false)
 const historyOpen = ref(false)
+const conflictDialogOpen = ref(false)
+const conflictState = ref<NoteConflictPayload | null>(null)
+const resolvingConflict = ref(false)
+const conflictAutoSavePaused = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -54,10 +60,15 @@ let syncingFromStore = false
 /** 同步当前选中笔记数据到本地草稿状态 */
 watch(
   () => noteStore.activeNote,
-  (note) => {
+  (note, prevNote) => {
     if (autoSaveTimer) {
       clearTimeout(autoSaveTimer)
       autoSaveTimer = null
+    }
+    if (!note || note.id !== prevNote?.id) {
+      conflictState.value = null
+      conflictDialogOpen.value = false
+      conflictAutoSavePaused.value = false
     }
     syncingFromStore = true
     if (note) {
@@ -79,9 +90,14 @@ watch(
   { immediate: true }
 )
 
-/** 全局按键监听：全屏模式下按 Esc 键快速退出（历史抽屉未打开时） */
+/** 全局按键监听：全屏模式下按 Esc 键快速退出（历史抽屉与冲突弹窗未打开时） */
 function handleWindowKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && layoutStore.isEditorFullscreen && !historyOpen.value) {
+  if (
+    e.key === 'Escape' &&
+    layoutStore.isEditorFullscreen &&
+    !historyOpen.value &&
+    !conflictDialogOpen.value
+  ) {
     layoutStore.toggleEditorFullscreen(false)
   }
 }
@@ -110,6 +126,89 @@ const hasUnsavedChanges = computed(() => {
   )
 })
 
+/** 打开版本冲突对比弹窗，提示用户确认线上版本与本地草稿 */
+function openConflictPrompt(noteId: string, serverNote: Note) {
+  conflictState.value = {
+    noteId,
+    serverNote,
+    localDraft: {
+      title: draftTitle.value,
+      content: draftContent.value,
+      format: draftFormat.value
+    }
+  }
+  conflictAutoSavePaused.value = true
+  conflictDialogOpen.value = true
+}
+
+/** 重新打开已存在的冲突对比弹窗（刷新本地草稿快照） */
+function reopenConflictPrompt() {
+  if (!conflictState.value) return
+  openConflictPrompt(conflictState.value.noteId, conflictState.value.serverNote)
+}
+
+/** 用户在冲突弹窗中确认覆盖保存：基于用户刚刚查看确认的线上版本号提交保存 */
+async function handleConfirmConflictOverwrite() {
+  if (!conflictState.value) return
+  resolvingConflict.value = true
+  try {
+    await noteStore.saveNote(conflictState.value.noteId, {
+      title: conflictState.value.localDraft.title,
+      content: conflictState.value.localDraft.content,
+      format: conflictState.value.localDraft.format,
+      changeType: 'save',
+      expectedUpdatedAt: conflictState.value.serverNote.updatedAt,
+      confirmConflict: true
+    })
+    conflictState.value = null
+    conflictDialogOpen.value = false
+    conflictAutoSavePaused.value = false
+    ElMessage.success(t('common.saved'))
+  } catch (err) {
+    if (err instanceof NoteConflictError) {
+      // 在用户确认期间线上又发生了更新，刷新展示最新的线上版本再次等待用户确认
+      openConflictPrompt(conflictState.value.noteId, err.serverNote)
+    } else {
+      ElMessage.error(resolveApiErrorMessage(err))
+    }
+  } finally {
+    resolvingConflict.value = false
+  }
+}
+
+/** 用户选择放弃本地冲突修改并采用线上最新版本 */
+function handleUseServerVersion() {
+  if (!conflictState.value) return
+  const serverNote = conflictState.value.serverNote
+  conflictState.value = null
+  conflictDialogOpen.value = false
+  conflictAutoSavePaused.value = false
+  noteStore.applyServerNote(serverNote)
+  ElMessage.success(t('common.success'))
+}
+
+/** 用户在冲突弹窗中直接编辑本地待保存版本时，实时同步冲突状态与编辑器草稿 */
+function handleUpdateLocalDraft(nextDraft: NoteConflictPayload['localDraft']) {
+  if (conflictState.value) {
+    conflictState.value = {
+      ...conflictState.value,
+      localDraft: { ...nextDraft }
+    }
+  }
+  draftTitle.value = nextDraft.title
+  draftContent.value = nextDraft.content
+  draftFormat.value = nextDraft.format
+  if (noteStore.activeNote) {
+    noteStore.recordLastEditedNote(noteStore.activeNote.id)
+  }
+}
+
+/** 用户取消覆盖：关闭弹窗并保留本地编辑内容，暂停自动保存直至手动处理 */
+function handleCancelConflictDialog() {
+  conflictDialogOpen.value = false
+  conflictAutoSavePaused.value = true
+}
+
 /** 处理标题或正文输入：立即记录最后编辑笔记 ID 并安排自动保存 */
 function handleEditorInput() {
   if (noteStore.activeNote) {
@@ -120,21 +219,40 @@ function handleEditorInput() {
 
 /** 安排 1.5 秒自动保存防抖 */
 function scheduleAutoSave() {
-  if (syncingFromStore || !noteStore.activeNote) return
+  if (
+    syncingFromStore ||
+    !noteStore.activeNote ||
+    conflictDialogOpen.value ||
+    conflictAutoSavePaused.value
+  ) {
+    return
+  }
   noteStore.savingState = 'idle'
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   const targetId = noteStore.activeNote.id
+  const expectedUpdatedAt = noteStore.activeNote.updatedAt
   autoSaveTimer = setTimeout(async () => {
-    if (!noteStore.activeNote || noteStore.activeNote.id !== targetId) return
+    if (
+      !noteStore.activeNote ||
+      noteStore.activeNote.id !== targetId ||
+      conflictDialogOpen.value ||
+      conflictAutoSavePaused.value
+    ) {
+      return
+    }
     try {
       await noteStore.saveNote(targetId, {
         title: draftTitle.value,
         content: draftContent.value,
         format: draftFormat.value,
-        changeType: 'auto_save'
+        changeType: 'auto_save',
+        expectedUpdatedAt
       })
-    } catch {
-      // 错误状态已在 store 中标记
+    } catch (err) {
+      if (err instanceof NoteConflictError) {
+        openConflictPrompt(targetId, err.serverNote)
+      }
+      // 其他错误状态已在 store 中标记
     }
   }, 1500)
 }
@@ -153,11 +271,18 @@ async function handleManualSave() {
       title: draftTitle.value,
       content: draftContent.value,
       format: draftFormat.value,
-      changeType: 'save'
+      changeType: 'save',
+      expectedUpdatedAt: note.updatedAt
     })
+    conflictState.value = null
+    conflictAutoSavePaused.value = false
     ElMessage.success(t('common.saved'))
   } catch (err) {
-    ElMessage.error(resolveApiErrorMessage(err))
+    if (err instanceof NoteConflictError) {
+      openConflictPrompt(note.id, err.serverNote)
+    } else {
+      ElMessage.error(resolveApiErrorMessage(err))
+    }
   }
 }
 
@@ -171,10 +296,17 @@ async function handleFormatChange(format: NoteFormat) {
       title: draftTitle.value,
       content: draftContent.value,
       format,
-      changeType: 'save'
+      changeType: 'save',
+      expectedUpdatedAt: note.updatedAt
     })
+    conflictState.value = null
+    conflictAutoSavePaused.value = false
   } catch (err) {
-    ElMessage.error(resolveApiErrorMessage(err))
+    if (err instanceof NoteConflictError) {
+      openConflictPrompt(note.id, err.serverNote)
+    } else {
+      ElMessage.error(resolveApiErrorMessage(err))
+    }
   }
 }
 
@@ -477,8 +609,18 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          <span class="text-[11px] text-slate-400 sm:text-xs">
+          <span
+            class="text-[11px] sm:text-xs"
+            :class="
+              noteStore.savingState === 'conflict'
+                ? 'font-medium text-amber-600 dark:text-amber-400'
+                : 'text-slate-400'
+            "
+          >
             <template v-if="noteStore.savingState === 'saving'">{{ t('common.saving') }}</template>
+            <template v-else-if="noteStore.savingState === 'conflict'">{{
+              t('notes.conflictBadge')
+            }}</template>
             <template v-else-if="hasUnsavedChanges">{{ t('common.unsaved') }}</template>
             <template v-else>{{ t('common.saved') }}</template>
           </span>
@@ -532,7 +674,13 @@ function handleKeydown(e: KeyboardEvent) {
             </el-button>
           </el-tooltip>
 
-          <el-button size="small" type="primary" class="!m-0 !rounded-lg" @click="handleManualSave">
+          <el-button
+            data-testid="save-note-btn"
+            size="small"
+            type="primary"
+            class="!m-0 !rounded-lg"
+            @click="handleManualSave"
+          >
             <el-icon class="mr-1"><Check /></el-icon>
             <span>{{ t('common.save') }}</span>
           </el-button>
@@ -547,6 +695,28 @@ function handleKeydown(e: KeyboardEvent) {
             <el-icon><Delete /></el-icon>
           </el-button>
         </div>
+      </div>
+
+      <!-- 存在多设备版本冲突且用户暂未确认时的顶部提醒条 -->
+      <div
+        v-if="noteStore.savingState === 'conflict' && conflictState"
+        data-testid="note-conflict-banner"
+        class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/80 bg-amber-50/90 px-3 py-1.5 text-xs text-amber-800 sm:px-5 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+      >
+        <div class="flex items-center gap-1.5">
+          <el-icon class="shrink-0 text-amber-500"><WarningFilled /></el-icon>
+          <span>{{ t('notes.conflictBannerText') }}</span>
+        </div>
+        <el-button
+          data-testid="reopen-conflict-btn"
+          size="small"
+          type="warning"
+          plain
+          class="!rounded-lg"
+          @click="reopenConflictPrompt"
+        >
+          {{ t('notes.conflictReviewBtn') }}
+        </el-button>
       </div>
 
       <!-- 笔记标题栏 -->
@@ -772,6 +942,17 @@ function handleKeydown(e: KeyboardEvent) {
         :note-id="noteStore.activeNote.id"
         :current-title="draftTitle"
         :current-content="draftContent"
+      />
+
+      <!-- 多设备编辑版本冲突对比确认弹窗 -->
+      <NoteConflictDialog
+        v-model="conflictDialogOpen"
+        :conflict="conflictState"
+        :submitting="resolvingConflict"
+        @update:local-draft="handleUpdateLocalDraft"
+        @confirm-overwrite="handleConfirmConflictOverwrite"
+        @use-server="handleUseServerVersion"
+        @cancel="handleCancelConflictDialog"
       />
     </template>
   </main>

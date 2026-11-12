@@ -169,4 +169,123 @@ describe('Folders, Notes, Pinning & Reorder API', () => {
       harness.db.close()
     }
   })
+
+  it('保存笔记前校验 expectedUpdatedAt，多设备冲突时返回 409 与线上最新版本，确认后才覆盖保存并保留被覆盖备份', async () => {
+    const harness = createTestHarness()
+    try {
+      const admin = await harness.loginAsAdmin()
+
+      // 创建初始笔记（t1）
+      const createRes = await harness.request(
+        '/api/notes',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: '多端协作笔记',
+            content: '初始内容',
+            format: 'markdown'
+          })
+        },
+        admin.cookie
+      )
+      expect(createRes.status).toBe(201)
+      const { note: initialNote } = (await createRes.json()) as {
+        note: { id: string; updatedAt: number }
+      }
+
+      // 设备 B 基于 initialNote.updatedAt 先行自动保存（不触发 30s 历史快照，仅更新 notes 主表）
+      const deviceBSaveRes = await harness.request(
+        `/api/notes/${initialNote.id}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: '多端协作笔记',
+            content: '设备 B 最新内容',
+            format: 'markdown',
+            changeType: 'auto_save',
+            expectedUpdatedAt: initialNote.updatedAt
+          })
+        },
+        admin.cookie
+      )
+      expect(deviceBSaveRes.status).toBe(200)
+      const { note: deviceBNote } = (await deviceBSaveRes.json()) as {
+        note: { updatedAt: number; content: string }
+      }
+      expect(deviceBNote.updatedAt).toBeGreaterThan(initialNote.updatedAt)
+
+      // 设备 A 仍持有旧的 initialNote.updatedAt 尝试保存，应被拦截并返回 409 + serverNote
+      const deviceAConflictRes = await harness.request(
+        `/api/notes/${initialNote.id}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: '多端协作笔记（设备 A）',
+            content: '设备 A 修改内容',
+            format: 'markdown',
+            changeType: 'save',
+            expectedUpdatedAt: initialNote.updatedAt
+          })
+        },
+        admin.cookie
+      )
+      expect(deviceAConflictRes.status).toBe(409)
+      const conflictBody = (await deviceAConflictRes.json()) as {
+        ok: boolean
+        code: string
+        serverNote: { title: string; content: string; updatedAt: number }
+      }
+      expect(conflictBody.ok).toBe(false)
+      expect(conflictBody.code).toBe('NOTE_CONFLICT')
+      expect(conflictBody.serverNote.content).toBe('设备 B 最新内容')
+      expect(conflictBody.serverNote.updatedAt).toBe(deviceBNote.updatedAt)
+
+      // 确认数据库未被设备 A 覆盖
+      const checkDbRes = await harness.request(`/api/notes/${initialNote.id}`, {}, admin.cookie)
+      const checkDbBody = (await checkDbRes.json()) as { note: { content: string } }
+      expect(checkDbBody.note.content).toBe('设备 B 最新内容')
+
+      // 用户确认后携带最新 serverNote.updatedAt 与 confirmConflict 提交保存
+      const confirmRes = await harness.request(
+        `/api/notes/${initialNote.id}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: '多端协作笔记（设备 A）',
+            content: '设备 A 确认覆盖内容',
+            format: 'markdown',
+            changeType: 'save',
+            expectedUpdatedAt: conflictBody.serverNote.updatedAt,
+            confirmConflict: true
+          })
+        },
+        admin.cookie
+      )
+      expect(confirmRes.status).toBe(200)
+      const confirmBody = (await confirmRes.json()) as {
+        note: { title: string; content: string; updatedAt: number }
+      }
+      expect(confirmBody.note.title).toBe('多端协作笔记（设备 A）')
+      expect(confirmBody.note.content).toBe('设备 A 确认覆盖内容')
+      expect(confirmBody.note.updatedAt).toBeGreaterThan(deviceBNote.updatedAt)
+
+      // 历史版本中应同时保留设备 B 被覆盖前的内容备份与设备 A 确认后的内容
+      const versionsRes = await harness.request(
+        `/api/notes/${initialNote.id}/versions`,
+        {},
+        admin.cookie
+      )
+      const { versions } = (await versionsRes.json()) as {
+        versions: Array<{ content: string }>
+      }
+      expect(versions.map((v) => v.content)).toContain('设备 B 最新内容')
+      expect(versions.map((v) => v.content)).toContain('设备 A 确认覆盖内容')
+    } finally {
+      harness.db.close()
+    }
+  })
 })

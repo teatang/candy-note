@@ -39,6 +39,8 @@ export const notesApi = {
       isPinned?: boolean
       changeType?: 'save' | 'auto_save'
       createVersion?: boolean
+      expectedUpdatedAt?: number
+      confirmConflict?: boolean
     }
   ) {
     return apiRequest<{ note: Note }>(`/api/notes/${id}`, {

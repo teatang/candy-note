@@ -262,6 +262,8 @@ noteRoutes.patch('/:id', async (c) => {
       isPinned?: boolean
       changeType?: 'save' | 'auto_save'
       createVersion?: boolean
+      expectedUpdatedAt?: number
+      confirmConflict?: boolean
     }>()
     .catch(() => null)
 
@@ -277,6 +279,19 @@ noteRoutes.patch('/:id', async (c) => {
 
   if (!existing) {
     return apiError(c, 404, 'NOTE_NOT_FOUND', '笔记不存在')
+  }
+
+  // 多设备并发编辑校验：保存前检查本地基准版本 (expectedUpdatedAt) 与线上最新版本是否一致
+  if (typeof body.expectedUpdatedAt === 'number' && existing.updated_at !== body.expectedUpdatedAt) {
+    return c.json(
+      {
+        ok: false,
+        code: 'NOTE_CONFLICT',
+        message: '线上笔记已被其他设备更新，请确认后再保存',
+        serverNote: toNoteDto(existing)
+      },
+      409
+    )
   }
 
   const nextTitle = body.title !== undefined ? body.title.slice(0, 200) : existing.title
@@ -307,24 +322,66 @@ noteRoutes.patch('/:id', async (c) => {
         : null
       : existing.pinned_at
 
-  const now = Date.now()
-  await c.env.DB.prepare(
-    `UPDATE notes
-     SET title = ?, content = ?, format = ?, folder_id = ?, is_pinned = ?, pinned_at = ?, updated_at = ?
-     WHERE id = ? AND user_id = ?`
-  )
-    .bind(
-      nextTitle,
-      nextContent,
-      nextFormat,
-      nextFolderId,
-      nextPinned,
-      nextPinnedAt,
-      now,
-      noteId,
-      user.id
+  const now = Math.max(Date.now(), existing.updated_at + 1)
+
+  if (typeof body.expectedUpdatedAt === 'number') {
+    const updateRes = await c.env.DB.prepare(
+      `UPDATE notes
+       SET title = ?, content = ?, format = ?, folder_id = ?, is_pinned = ?, pinned_at = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND updated_at = ?`
     )
-    .run()
+      .bind(
+        nextTitle,
+        nextContent,
+        nextFormat,
+        nextFolderId,
+        nextPinned,
+        nextPinnedAt,
+        now,
+        noteId,
+        user.id,
+        body.expectedUpdatedAt
+      )
+      .run()
+
+    if ((updateRes.meta?.changes ?? 0) === 0) {
+      const latest = await c.env.DB.prepare(
+        `SELECT * FROM notes WHERE id = ? AND user_id = ? LIMIT 1`
+      )
+        .bind(noteId, user.id)
+        .first<NoteRow>()
+      if (!latest) {
+        return apiError(c, 404, 'NOTE_NOT_FOUND', '笔记不存在')
+      }
+      return c.json(
+        {
+          ok: false,
+          code: 'NOTE_CONFLICT',
+          message: '线上笔记已被其他设备更新，请确认后再保存',
+          serverNote: toNoteDto(latest)
+        },
+        409
+      )
+    }
+  } else {
+    await c.env.DB.prepare(
+      `UPDATE notes
+       SET title = ?, content = ?, format = ?, folder_id = ?, is_pinned = ?, pinned_at = ?, updated_at = ?
+       WHERE id = ? AND user_id = ?`
+    )
+      .bind(
+        nextTitle,
+        nextContent,
+        nextFormat,
+        nextFolderId,
+        nextPinned,
+        nextPinnedAt,
+        now,
+        noteId,
+        user.id
+      )
+      .run()
+  }
 
   // 检测内容、标题或格式是否发生实质变化，按手动保存或节流自动保存创建历史快照
   const contentChanged =
@@ -340,7 +397,28 @@ noteRoutes.patch('/:id', async (c) => {
       .bind(noteId)
       .first<Pick<NoteVersionRow, 'title' | 'content' | 'format' | 'created_at'>>()
 
+    // 用户确认覆盖冲突时，若线上最新版本尚未存入历史快照，先保留一份线上内容备份防止误覆盖丢失
+    if (
+      body.confirmConflict &&
+      (!latestVersion ||
+        latestVersion.title !== existing.title ||
+        latestVersion.content !== existing.content ||
+        latestVersion.format !== existing.format)
+    ) {
+      await createNoteVersionSnapshot(c.env.DB, {
+        noteId,
+        userId: user.id,
+        title: existing.title,
+        content: existing.content,
+        format: existing.format,
+        folderId: existing.folder_id,
+        changeType: 'auto_save',
+        now: Math.max(existing.updated_at, now - 1)
+      })
+    }
+
     const differsFromLatest =
+      body.confirmConflict ||
       !latestVersion ||
       latestVersion.title !== nextTitle ||
       latestVersion.content !== nextContent ||
@@ -486,8 +564,8 @@ noteRoutes.post('/:id/versions/:versionId/rollback', async (c) => {
     return apiError(c, 404, 'VERSION_NOT_FOUND', '目标历史版本不存在')
   }
 
-  const now = Date.now()
-  if (now - version.created_at > SEVEN_DAYS_MS) {
+  const now = Math.max(Date.now(), note.updated_at + 1)
+  if (Date.now() - version.created_at > SEVEN_DAYS_MS) {
     await c.env.DB.prepare(`DELETE FROM note_versions WHERE id = ?`).bind(version.id).run()
     return apiError(c, 400, 'VERSION_EXPIRED', '该历史版本已超过 7 天保留期限，无法回退')
   }

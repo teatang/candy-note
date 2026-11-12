@@ -1,11 +1,23 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { ApiRequestError } from '@/api/client'
 import { filesApi } from '@/api/files'
 import { foldersApi } from '@/api/folders'
 import { notesApi } from '@/api/notes'
 import { useAuthStore } from '@/stores/auth'
 import type { Attachment, Folder, MarkdownViewMode, Note, NoteFormat, NoteVersion } from '@/types'
 import { buildSortPayload, reorderListById } from '@/utils/reorder'
+
+/** 多设备并发保存检测到版本不一致时抛出的冲突异常 */
+export class NoteConflictError extends Error {
+  readonly serverNote: Note
+
+  constructor(serverNote: Note, message = 'NOTE_CONFLICT') {
+    super(message)
+    this.name = 'NoteConflictError'
+    this.serverNote = serverNote
+  }
+}
 
 const EDITOR_STATE_STORAGE_PREFIX = 'candy_note_editor_state'
 
@@ -83,7 +95,7 @@ export const useNoteStore = defineStore('note', () => {
   const versions = ref<NoteVersion[]>([])
   const attachments = ref<Attachment[]>([])
   const loading = ref(false)
-  const savingState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const savingState = ref<'idle' | 'saving' | 'saved' | 'error' | 'conflict'>('idle')
   const uploadingImage = ref(false)
 
   /** 持久化最后编辑的笔记 ID 与 Markdown 视图模式到 localStorage */
@@ -365,7 +377,7 @@ export const useNoteStore = defineStore('note', () => {
     return res.note
   }
 
-  /** 保存笔记更新（支持手动保存与自动保存） */
+  /** 保存笔记更新（支持手动保存、自动保存与多设备保存前版本一致性校验） */
   async function saveNote(
     id: string,
     patch: {
@@ -375,29 +387,88 @@ export const useNoteStore = defineStore('note', () => {
       folderId?: string | null
       isPinned?: boolean
       changeType?: 'save' | 'auto_save'
+      expectedUpdatedAt?: number
+      confirmConflict?: boolean
     }
   ) {
     savingState.value = 'saving'
-    try {
-      const res = await notesApi.update(id, patch)
+    const localBase = allNotes.value.find((n) => n.id === id)
+    const isContentEdit =
+      patch.title !== undefined || patch.content !== undefined || patch.format !== undefined
+    const expectedUpdatedAt =
+      patch.expectedUpdatedAt ?? (isContentEdit && localBase ? localBase.updatedAt : undefined)
+    const requestPayload =
+      expectedUpdatedAt !== undefined ? { ...patch, expectedUpdatedAt } : patch
+
+    const commitUpdate = (updated: Note) => {
       const idx = allNotes.value.findIndex((n) => n.id === id)
       if (idx !== -1) {
-        allNotes.value[idx] = res.note
+        allNotes.value[idx] = updated
       }
-      if (
-        activeNoteId.value === id ||
-        patch.title !== undefined ||
-        patch.content !== undefined ||
-        patch.format !== undefined
-      ) {
+      if (activeNoteId.value === id || isContentEdit) {
         persistEditorState(id, markdownViewMode.value)
       }
       savingState.value = 'saved'
-      return res.note
+      return updated
+    }
+
+    try {
+      const res = await notesApi.update(id, requestPayload)
+      return commitUpdate(res.note)
     } catch (err) {
+      if (err instanceof ApiRequestError && err.code === 'NOTE_CONFLICT') {
+        const errServerNote = (err.data as { serverNote?: Note } | undefined)?.serverNote
+        const serverNote = errServerNote ?? (await notesApi.get(id)).note
+
+        // 若线上仅变更了置顶/文件夹等元信息、正文与标题未变化，则自动同步元信息后重试保存
+        if (
+          localBase &&
+          !patch.confirmConflict &&
+          serverNote.title === localBase.title &&
+          serverNote.content === localBase.content &&
+          serverNote.format === localBase.format
+        ) {
+          try {
+            const retried = await notesApi.update(id, {
+              ...patch,
+              expectedUpdatedAt: serverNote.updatedAt
+            })
+            return commitUpdate(retried.note)
+          } catch (retryErr) {
+            if (retryErr instanceof ApiRequestError && retryErr.code === 'NOTE_CONFLICT') {
+              const latestServer =
+                (retryErr.data as { serverNote?: Note } | undefined)?.serverNote ??
+                (await notesApi.get(id)).note
+              savingState.value = 'conflict'
+              throw new NoteConflictError(latestServer, retryErr.message)
+            }
+            savingState.value = 'error'
+            throw retryErr
+          }
+        }
+
+        savingState.value = 'conflict'
+        throw new NoteConflictError(serverNote, err.message)
+      }
+
       savingState.value = 'error'
       throw err
     }
+  }
+
+  /** 将线上最新版本直接应用到本地工作区（用于用户选择“采用线上版本”时） */
+  function applyServerNote(serverNote: Note) {
+    const idx = allNotes.value.findIndex((n) => n.id === serverNote.id)
+    if (idx !== -1) {
+      allNotes.value[idx] = serverNote
+    } else {
+      allNotes.value.unshift(serverNote)
+    }
+    if (activeNoteId.value === serverNote.id) {
+      persistEditorState(serverNote.id, markdownViewMode.value)
+    }
+    savingState.value = 'saved'
+    return serverNote
   }
 
   /** 切换笔记置顶状态 */
@@ -535,6 +606,7 @@ export const useNoteStore = defineStore('note', () => {
     reorderFolders,
     createNote,
     saveNote,
+    applyServerNote,
     togglePin,
     moveNoteToFolder,
     reorderNotes,

@@ -8,6 +8,7 @@ import { authApi } from '@/api/auth'
 import { filesApi } from '@/api/files'
 import { foldersApi } from '@/api/folders'
 import { notesApi } from '@/api/notes'
+import { ApiRequestError } from '@/api/client'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import FolderSidebar from '@/components/notes/FolderSidebar.vue'
 import NoteEditor from '@/components/notes/NoteEditor.vue'
@@ -395,6 +396,164 @@ describe('Core Vue Components', () => {
     expect(editorWrapper.find('.candy-markdown-body').html()).toContain('<h1>目标标题</h1>')
 
     editorWrapper.unmount()
+  })
+
+  it('NoteEditor 保存前检测到线上版本与本地基线不一致时应弹窗展示双版本对比并等待用户确认后再保存', async () => {
+    const initialNote = {
+      id: 'note-conflict-1',
+      userId: 'u-1',
+      folderId: null,
+      title: '协同笔记',
+      content: '初始正文',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+    const serverUpdatedNote = {
+      ...initialNote,
+      title: '协同笔记（手机端修改）',
+      content: '手机端最新正文内容',
+      updatedAt: 200
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [initialNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    const updateSpy = vi
+      .spyOn(notesApi, 'update')
+      .mockRejectedValueOnce(
+        new ApiRequestError('NOTE_CONFLICT', '线上笔记已被其他设备更新', 409, {
+          serverNote: serverUpdatedNote
+        })
+      )
+      .mockResolvedValueOnce({
+        note: {
+          ...initialNote,
+          title: '协同笔记（已合并标题）',
+          content: '电脑端与手机端合并后的正文',
+          format: 'plain',
+          updatedAt: 300
+        }
+      })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+
+    // 本地编辑后点击保存，首次请求触发 409 冲突
+    await wrapper.find('textarea').setValue('电脑端待保存内容')
+    await wrapper.find('[data-testid="save-note-btn"]').trigger('click')
+    await flushPromises()
+
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(noteStore.savingState).toBe('conflict')
+
+    // 应弹出冲突对比对话框，同时展示线上最新版本与可编辑的本地待保存版本
+    const dialog = document.body.querySelector('[data-testid="note-conflict-dialog"]')
+    expect(dialog).not.toBeNull()
+    expect(dialog!.textContent).toContain('线上最新版本')
+    expect(dialog!.textContent).toContain('手机端最新正文内容')
+    expect(dialog!.textContent).toContain('本地待保存版本')
+
+    const localTitleInput = document.body.querySelector(
+      '[data-testid="conflict-local-title-input"]'
+    ) as HTMLInputElement
+    const localContentInput = document.body.querySelector(
+      '[data-testid="conflict-local-content-input"]'
+    ) as HTMLTextAreaElement
+    expect(localTitleInput).not.toBeNull()
+    expect(localContentInput).not.toBeNull()
+    expect(localContentInput.value).toBe('电脑端待保存内容')
+
+    // 冲突弹窗应支持切换全屏编辑，并支持按 Esc 退出全屏且保持冲突弹窗打开
+    const elDialog = document.body.querySelector('.el-dialog') as HTMLElement
+    const fullscreenBtn = document.body.querySelector(
+      '[data-testid="conflict-toggle-fullscreen"]'
+    ) as HTMLElement
+    expect(fullscreenBtn).not.toBeNull()
+    expect(elDialog.classList.contains('is-fullscreen')).toBe(false)
+
+    fullscreenBtn.click()
+    await flushPromises()
+    expect(elDialog.classList.contains('is-fullscreen')).toBe(true)
+    expect(elDialog.classList.contains('candy-conflict-dialog-fullscreen')).toBe(true)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(elDialog.classList.contains('is-fullscreen')).toBe(false)
+    expect(document.body.querySelector('[data-testid="note-conflict-dialog"]')).not.toBeNull()
+
+    // 在冲突页面直接修改本地待保存版本的标题、正文与格式
+    localTitleInput.value = '协同笔记（已合并标题）'
+    localTitleInput.dispatchEvent(new Event('input', { bubbles: true }))
+    localContentInput.value = '电脑端与手机端合并后的正文'
+    localContentInput.dispatchEvent(new Event('input', { bubbles: true }))
+    const plainFormatBtn = document.body.querySelector(
+      '[data-testid="conflict-local-format-plain"]'
+    ) as HTMLElement
+    plainFormatBtn.click()
+    await flushPromises()
+
+    // 点击“取消（继续编辑）”应关闭弹窗并把冲突页面中的编辑同步保留到主编辑器，且不执行覆盖保存
+    const cancelBtn = document.body.querySelector('[data-testid="conflict-cancel"]') as HTMLElement
+    cancelBtn.click()
+    await flushPromises()
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(
+      (wrapper.find('input[placeholder="输入笔记标题..."]').element as HTMLInputElement).value
+    ).toBe('协同笔记（已合并标题）')
+    expect(wrapper.find('textarea').element.value).toBe('电脑端与手机端合并后的正文')
+    expect(wrapper.find('[data-testid="note-conflict-banner"]').exists()).toBe(true)
+
+    // 点击顶部提醒条重新打开弹窗并点击“确认覆盖保存”，此时应携带编辑后的本地版本与线上最新时间戳提交保存
+    await wrapper.find('[data-testid="reopen-conflict-btn"]').trigger('click')
+    await flushPromises()
+    const confirmBtn = document.body.querySelector(
+      '[data-testid="conflict-confirm-save"]'
+    ) as HTMLElement
+    confirmBtn.click()
+    await flushPromises()
+
+    expect(updateSpy).toHaveBeenCalledTimes(2)
+    expect(updateSpy.mock.calls[1][1]).toMatchObject({
+      title: '协同笔记（已合并标题）',
+      content: '电脑端与手机端合并后的正文',
+      format: 'plain',
+      expectedUpdatedAt: 200,
+      confirmConflict: true
+    })
+    expect(noteStore.savingState).toBe('saved')
+    expect(wrapper.find('[data-testid="note-conflict-banner"]').exists()).toBe(false)
+
+    // 再次模拟冲突并测试“采用线上版本”分支
+    updateSpy.mockRejectedValueOnce(
+      new ApiRequestError('NOTE_CONFLICT', '线上笔记已被其他设备更新', 409, {
+        serverNote: { ...serverUpdatedNote, updatedAt: 400, content: '线上二次更新内容' }
+      })
+    )
+    await wrapper.find('textarea').setValue('本地另一段编辑')
+    await wrapper.find('[data-testid="save-note-btn"]').trigger('click')
+    await flushPromises()
+
+    const useServerBtn = document.body.querySelector(
+      '[data-testid="conflict-use-server"]'
+    ) as HTMLElement
+    useServerBtn.click()
+    await flushPromises()
+    expect(wrapper.find('textarea').element.value).toBe('线上二次更新内容')
+    expect(noteStore.activeNote?.updatedAt).toBe(400)
+
+    wrapper.unmount()
   })
 
   it('AppHeader、FolderSidebar 与 NoteList 应联动支持折叠侧边栏与移动端文件夹抽屉', async () => {
