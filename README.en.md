@@ -156,7 +156,7 @@ pnpm build
    ```
 5. **Build & Deploy**:
    ```bash
-   pnpm deploy
+   pnpm deploy2cf
    ```
 
 ---

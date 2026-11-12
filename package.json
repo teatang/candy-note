@@ -15,7 +15,7 @@
     "test:watch": "vitest",
     "db:migrate:local": "wrangler d1 migrations apply candy-note-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply candy-note-db --remote",
-    "deploy": "pnpm build && wrangler deploy"
+    "deploy2cf": "pnpm build && wrangler deploy"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",

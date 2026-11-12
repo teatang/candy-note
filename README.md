@@ -156,7 +156,7 @@ pnpm build
    ```
 5. **一键构建并部署**：
    ```bash
-   pnpm deploy
+   pnpm deploy2cf
    ```
 
 ---
