@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { filesApi } from '@/api/files'
 import { foldersApi } from '@/api/folders'
 import { notesApi } from '@/api/notes'
-import { useNoteStore } from '@/stores/note'
-import type { Folder, Note } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+import { getEditorStateStorageKey, useNoteStore } from '@/stores/note'
+import type { Folder, Note, User } from '@/types'
 
 /**
  * 笔记工作区 Store 单元测试
@@ -60,6 +61,7 @@ describe('Note Workspace Store', () => {
   ]
 
   beforeEach(() => {
+    localStorage.clear()
     setActivePinia(createPinia())
     vi.restoreAllMocks()
     vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: structuredClone(sampleFolders) })
@@ -127,5 +129,149 @@ describe('Note Workspace Store', () => {
     expect(rollbackSpy).toHaveBeenCalledWith('n-1', 'ver-1')
     expect(restored.title).toBe('回退后标题')
     expect(store.activeNote?.content).toBe('旧版本内容')
+  })
+
+  it('应将最后编辑的笔记 ID 与 Markdown 编辑视图模式保存到 localStorage 并在刷新后默认恢复', async () => {
+    vi.spyOn(notesApi, 'update').mockImplementation(async (id, patch) => {
+      const base = sampleNotes.find((n) => n.id === id)!
+      return {
+        note: {
+          ...base,
+          ...patch,
+          updatedAt: Date.now()
+        }
+      }
+    })
+
+    const store = useNoteStore()
+    await store.loadWorkspace()
+    expect(store.activeNoteId).toBe('n-1')
+    expect(store.markdownViewMode).toBe('split')
+
+    // 切换到 n-3 并设置为纯编辑模式
+    await store.selectNote('n-3')
+    store.setMarkdownViewMode('edit')
+    expect(localStorage.getItem(getEditorStateStorageKey())).toBe(
+      JSON.stringify({ noteId: 'n-3', markdownViewMode: 'edit' })
+    )
+
+    // 模拟浏览器刷新/重启（重新创建 Pinia 实例）
+    setActivePinia(createPinia())
+    const reloaded = useNoteStore()
+    await reloaded.loadWorkspace()
+    expect(reloaded.activeNoteId).toBe('n-3')
+    expect(reloaded.markdownViewMode).toBe('edit')
+
+    // 切换为纯预览模式并再次模拟刷新
+    reloaded.setMarkdownViewMode('preview')
+    setActivePinia(createPinia())
+    const reloadedPreview = useNoteStore()
+    await reloadedPreview.loadWorkspace()
+    expect(reloadedPreview.activeNoteId).toBe('n-3')
+    expect(reloadedPreview.markdownViewMode).toBe('preview')
+
+    // 编辑普通文本笔记 n-2（列表置顶操作非当前笔记不应覆盖最后编辑记录）
+    await reloadedPreview.saveNote('n-2', { content: '更新后的文本', changeType: 'save' })
+    await reloadedPreview.togglePin(sampleNotes[0])
+    setActivePinia(createPinia())
+    const reloadedPlain = useNoteStore()
+    await reloadedPlain.loadWorkspace()
+    expect(reloadedPlain.activeNoteId).toBe('n-2')
+  })
+
+  it('应按登录用户隔离持久化状态，并在笔记被删除或缓存损坏时安全回退', async () => {
+    const user1: User = {
+      id: 'u-1',
+      username: 'alice',
+      email: 'alice@example.com',
+      role: 'user',
+      status: 'active',
+      mustChangePassword: false,
+      createdAt: 1,
+      updatedAt: 1,
+      lastLoginAt: null
+    }
+    const user2: User = { ...user1, id: 'u-2', username: 'bob', email: 'bob@example.com' }
+
+    const authStore1 = useAuthStore()
+    authStore1.user = user1
+    const store1 = useNoteStore()
+    await store1.loadWorkspace()
+    await store1.selectNote('n-3')
+    store1.setMarkdownViewMode('preview')
+
+    // 切换用户 u-2 后应互不干扰
+    setActivePinia(createPinia())
+    const authStore2 = useAuthStore()
+    authStore2.user = user2
+    const store2 = useNoteStore()
+    await store2.loadWorkspace()
+    expect(store2.activeNoteId).toBe('n-1')
+    expect(store2.markdownViewMode).toBe('split')
+    await store2.selectNote('n-2')
+    store2.setMarkdownViewMode('edit')
+
+    // 切回用户 u-1 仍可恢复其上次笔记与模式
+    setActivePinia(createPinia())
+    useAuthStore().user = user1
+    const restored1 = useNoteStore()
+    await restored1.loadWorkspace()
+    expect(restored1.activeNoteId).toBe('n-3')
+    expect(restored1.markdownViewMode).toBe('preview')
+
+    // 删除当前恢复的笔记 n-3 后应更新持久化记录
+    vi.spyOn(notesApi, 'remove').mockResolvedValue({ ok: true })
+    await restored1.deleteNote('n-3')
+    expect(restored1.activeNoteId).toBe('n-1')
+    expect(JSON.parse(localStorage.getItem(getEditorStateStorageKey('u-1'))!)).toEqual({
+      noteId: 'n-1',
+      markdownViewMode: 'preview'
+    })
+
+    // 若本地缓存的 noteId 不存在或 JSON 损坏，加载工作区应安全回退不抛错
+    localStorage.setItem(getEditorStateStorageKey('u-1'), '{bad json')
+    setActivePinia(createPinia())
+    useAuthStore().user = user1
+    const fallbackFromBadJson = useNoteStore()
+    await fallbackFromBadJson.loadWorkspace()
+    expect(fallbackFromBadJson.activeNoteId).toBe('n-1')
+    expect(fallbackFromBadJson.markdownViewMode).toBe('split')
+
+    localStorage.setItem(
+      getEditorStateStorageKey('u-1'),
+      JSON.stringify({ noteId: 'missing-id', markdownViewMode: 'edit' })
+    )
+    setActivePinia(createPinia())
+    useAuthStore().user = user1
+    const fallbackFromMissing = useNoteStore()
+    await fallbackFromMissing.loadWorkspace()
+    expect(fallbackFromMissing.activeNoteId).toBe('n-1')
+    expect(fallbackFromMissing.markdownViewMode).toBe('edit')
+  })
+
+  it('在纯预览模式下新建 Markdown 笔记应自动切回边写边预览以便直接编辑', async () => {
+    vi.spyOn(notesApi, 'create').mockResolvedValue({
+      note: {
+        id: 'n-new',
+        userId: 'u-1',
+        folderId: null,
+        title: '',
+        content: '',
+        format: 'markdown',
+        isPinned: false,
+        pinnedAt: null,
+        sortOrder: 0,
+        createdAt: 100,
+        updatedAt: 100
+      }
+    })
+
+    const store = useNoteStore()
+    await store.loadWorkspace()
+    store.setMarkdownViewMode('preview')
+
+    await store.createNote('markdown')
+    expect(store.activeNoteId).toBe('n-new')
+    expect(store.markdownViewMode).toBe('split')
   })
 })

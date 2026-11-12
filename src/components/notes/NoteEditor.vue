@@ -17,7 +17,7 @@ import { useI18n } from 'vue-i18n'
 import { resolveApiErrorMessage } from '@/api/client'
 import { useLayoutStore } from '@/stores/layout'
 import { useNoteStore } from '@/stores/note'
-import type { NoteFormat } from '@/types'
+import type { MarkdownViewMode, NoteFormat } from '@/types'
 import { formatBytes } from '@/utils/date'
 import { renderMarkdownSafe } from '@/utils/markdown'
 import VersionHistoryDrawer from './VersionHistoryDrawer.vue'
@@ -39,7 +39,10 @@ const draftTitle = ref('')
 const draftContent = ref('')
 const draftFormat = ref<NoteFormat>('markdown')
 const draftFolderId = ref<string | null>(null)
-const viewMode = ref<'split' | 'edit' | 'preview'>('split')
+const viewMode = computed<MarkdownViewMode>({
+  get: () => noteStore.markdownViewMode,
+  set: (mode) => noteStore.setMarkdownViewMode(mode)
+})
 const isDraggingFile = ref(false)
 const historyOpen = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -107,6 +110,14 @@ const hasUnsavedChanges = computed(() => {
   )
 })
 
+/** 处理标题或正文输入：立即记录最后编辑笔记 ID 并安排自动保存 */
+function handleEditorInput() {
+  if (noteStore.activeNote) {
+    noteStore.recordLastEditedNote(noteStore.activeNote.id)
+  }
+  scheduleAutoSave()
+}
+
 /** 安排 1.5 秒自动保存防抖 */
 function scheduleAutoSave() {
   if (syncingFromStore || !noteStore.activeNote) return
@@ -132,6 +143,7 @@ function scheduleAutoSave() {
 async function handleManualSave() {
   const note = noteStore.activeNote
   if (!note) return
+  noteStore.recordLastEditedNote(note.id)
   if (autoSaveTimer) {
     clearTimeout(autoSaveTimer)
     autoSaveTimer = null
@@ -153,6 +165,7 @@ async function handleFormatChange(format: NoteFormat) {
   draftFormat.value = format
   const note = noteStore.activeNote
   if (!note) return
+  noteStore.recordLastEditedNote(note.id)
   try {
     await noteStore.saveNote(note.id, {
       title: draftTitle.value,
@@ -208,6 +221,9 @@ async function handleDeleteNote() {
 
 /** 在当前光标位置插入 Markdown 片段或普通文本 */
 function insertAtCursor(snippet: string) {
+  if (noteStore.activeNote) {
+    noteStore.recordLastEditedNote(noteStore.activeNote.id)
+  }
   const el = textareaRef.value
   if (!el) {
     draftContent.value += snippet
@@ -229,6 +245,9 @@ function insertAtCursor(snippet: string) {
 
 /** 包裹选中文字（用于粗体、斜体等格式） */
 function wrapSelection(prefix: string, suffix = prefix, placeholder = 'text') {
+  if (noteStore.activeNote) {
+    noteStore.recordLastEditedNote(noteStore.activeNote.id)
+  }
   const el = textareaRef.value
   if (!el) {
     insertAtCursor(`${prefix}${placeholder}${suffix}`)
@@ -442,6 +461,7 @@ function handleKeydown(e: KeyboardEvent) {
                 { key: 'preview', label: t('notes.viewModePreview') }
               ]"
               :key="m.key"
+              :data-testid="`view-mode-${m.key}`"
               type="button"
               class="rounded-md px-2 py-1 text-xs transition"
               :class="
@@ -449,7 +469,7 @@ function handleKeydown(e: KeyboardEvent) {
                   ? 'bg-white font-medium text-slate-900 shadow-xs dark:bg-slate-700 dark:text-slate-100'
                   : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
               "
-              @click="viewMode = m.key as 'split' | 'edit' | 'preview'"
+              @click="viewMode = m.key as MarkdownViewMode"
             >
               {{ m.label }}
             </button>
@@ -537,7 +557,7 @@ function handleKeydown(e: KeyboardEvent) {
           :placeholder="t('notes.titlePlaceholder')"
           maxlength="200"
           class="w-full bg-transparent text-lg font-bold text-slate-900 placeholder-slate-300 outline-none sm:text-xl dark:text-slate-100 dark:placeholder-slate-600"
-          @input="scheduleAutoSave"
+          @input="handleEditorInput"
           @keydown="handleKeydown"
         />
       </div>
@@ -685,7 +705,7 @@ function handleKeydown(e: KeyboardEvent) {
                 ? 'border-b md:border-b-0 md:border-r border-slate-200/80 dark:border-slate-800'
                 : ''
             "
-            @input="scheduleAutoSave"
+            @input="handleEditorInput"
             @paste="handlePaste"
             @keydown="handleKeydown"
           />
@@ -704,7 +724,7 @@ function handleKeydown(e: KeyboardEvent) {
           v-model="draftContent"
           :placeholder="t('notes.contentPlaceholderPlain')"
           class="min-h-0 w-full flex-1 resize-none border-0 bg-transparent p-4 text-sm leading-7 text-slate-800 outline-none placeholder:text-slate-400 sm:p-6 dark:text-slate-200 dark:placeholder:text-slate-600"
-          @input="scheduleAutoSave"
+          @input="handleEditorInput"
           @paste="handlePaste"
           @keydown="handleKeydown"
         />

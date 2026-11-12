@@ -280,6 +280,123 @@ describe('Core Vue Components', () => {
     wrapper.unmount()
   })
 
+  it('NoteEditor 与 NoteList 应记录最后编辑的笔记与 Markdown 编辑状态并在刷新重挂载后恢复', async () => {
+    const notesData = [
+      {
+        id: 'note-1',
+        userId: 'u-1',
+        folderId: null,
+        title: '第一篇笔记',
+        content: '# 第一篇',
+        format: 'markdown' as const,
+        isPinned: false,
+        pinnedAt: null,
+        sortOrder: 0,
+        createdAt: 1,
+        updatedAt: 1
+      },
+      {
+        id: 'note-2',
+        userId: 'u-1',
+        folderId: null,
+        title: '纯文本笔记',
+        content: 'plain body',
+        format: 'plain' as const,
+        isPinned: false,
+        pinnedAt: null,
+        sortOrder: 1,
+        createdAt: 2,
+        updatedAt: 2
+      },
+      {
+        id: 'note-3',
+        userId: 'u-1',
+        folderId: null,
+        title: '目标 Markdown 笔记',
+        content: '# 目标标题\n\n目标正文',
+        format: 'markdown' as const,
+        isPinned: false,
+        pinnedAt: null,
+        sortOrder: 2,
+        createdAt: 3,
+        updatedAt: 3
+      }
+    ]
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockImplementation(async () => ({ notes: structuredClone(notesData) }))
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    // 首次进入：默认打开第一篇笔记且为边写边预览 (split)
+    let pinia = createPinia()
+    setActivePinia(pinia)
+    let noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    let listWrapper = mount(NoteList, {
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    let editorWrapper = mount(NoteEditor, {
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+
+    expect(noteStore.activeNoteId).toBe('note-1')
+    expect(editorWrapper.find('textarea').exists()).toBe(true)
+    expect(editorWrapper.find('.candy-markdown-body').exists()).toBe(true)
+
+    // 点击切换到第三篇 Markdown 笔记并编辑内容，然后切换为“纯编辑”模式
+    const targetCard = listWrapper
+      .findAll('div.cursor-pointer')
+      .find((el) => el.text().includes('目标 Markdown 笔记'))
+    expect(targetCard).toBeDefined()
+    await targetCard!.trigger('click')
+    await flushPromises()
+    expect(noteStore.activeNoteId).toBe('note-3')
+
+    await editorWrapper.find('textarea').setValue('# 已编辑标题\n\n新内容')
+    await editorWrapper.find('[data-testid="view-mode-edit"]').trigger('click')
+    expect(editorWrapper.find('textarea').exists()).toBe(true)
+    expect(editorWrapper.find('.candy-markdown-body').exists()).toBe(false)
+
+    listWrapper.unmount()
+    editorWrapper.unmount()
+
+    // 模拟浏览器刷新/重启：创建新的 Pinia 与组件实例，应默认打开 note-3 且处于纯编辑模式
+    pinia = createPinia()
+    setActivePinia(pinia)
+    noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+    editorWrapper = mount(NoteEditor, {
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+
+    expect(noteStore.activeNoteId).toBe('note-3')
+    expect(
+      (editorWrapper.find('input[placeholder="输入笔记标题..."]').element as HTMLInputElement).value
+    ).toBe('目标 Markdown 笔记')
+    expect(editorWrapper.find('textarea').exists()).toBe(true)
+    expect(editorWrapper.find('.candy-markdown-body').exists()).toBe(false)
+
+    // 切换为“纯预览”模式并再次模拟刷新，应保持纯预览模式
+    await editorWrapper.find('[data-testid="view-mode-preview"]').trigger('click')
+    expect(editorWrapper.find('textarea').exists()).toBe(false)
+    expect(editorWrapper.find('.candy-markdown-body').exists()).toBe(true)
+    editorWrapper.unmount()
+
+    pinia = createPinia()
+    setActivePinia(pinia)
+    noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+    editorWrapper = mount(NoteEditor, {
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+
+    expect(noteStore.activeNoteId).toBe('note-3')
+    expect(editorWrapper.find('textarea').exists()).toBe(false)
+    expect(editorWrapper.find('.candy-markdown-body').html()).toContain('<h1>目标标题</h1>')
+
+    editorWrapper.unmount()
+  })
+
   it('AppHeader、FolderSidebar 与 NoteList 应联动支持折叠侧边栏与移动端文件夹抽屉', async () => {
     vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
     vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [] })

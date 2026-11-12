@@ -3,8 +3,57 @@ import { computed, ref } from 'vue'
 import { filesApi } from '@/api/files'
 import { foldersApi } from '@/api/folders'
 import { notesApi } from '@/api/notes'
-import type { Attachment, Folder, Note, NoteFormat, NoteVersion } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+import type { Attachment, Folder, MarkdownViewMode, Note, NoteFormat, NoteVersion } from '@/types'
 import { buildSortPayload, reorderListById } from '@/utils/reorder'
+
+const EDITOR_STATE_STORAGE_PREFIX = 'candy_note_editor_state'
+
+/** 本地持久化的最后编辑笔记与 Markdown 视图模式状态 */
+export interface PersistedEditorState {
+  noteId: string | null
+  markdownViewMode: MarkdownViewMode
+}
+
+function isValidMarkdownViewMode(value: unknown): value is MarkdownViewMode {
+  return value === 'split' || value === 'edit' || value === 'preview'
+}
+
+export function getEditorStateStorageKey(userId?: string | null): string {
+  return userId ? `${EDITOR_STATE_STORAGE_PREFIX}:${userId}` : EDITOR_STATE_STORAGE_PREFIX
+}
+
+function readPersistedEditorState(userId?: string | null): PersistedEditorState {
+  const fallback: PersistedEditorState = { noteId: null, markdownViewMode: 'split' }
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return fallback
+  }
+  try {
+    const raw = window.localStorage.getItem(getEditorStateStorageKey(userId))
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw) as Record<string, unknown> | null
+    if (!parsed || typeof parsed !== 'object') return fallback
+    return {
+      noteId: typeof parsed.noteId === 'string' && parsed.noteId.length > 0 ? parsed.noteId : null,
+      markdownViewMode: isValidMarkdownViewMode(parsed.markdownViewMode)
+        ? parsed.markdownViewMode
+        : 'split'
+    }
+  } catch {
+    return fallback
+  }
+}
+
+function writePersistedEditorState(state: PersistedEditorState, userId?: string | null): void {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return
+  }
+  try {
+    window.localStorage.setItem(getEditorStateStorageKey(userId), JSON.stringify(state))
+  } catch {
+    // 忽略浏览器隐私模式或 localStorage 存储配额异常
+  }
+}
 
 /** 带树形深度的扁平文件夹展示项 */
 export interface FolderTreeItem extends Folder {
@@ -13,13 +62,22 @@ export interface FolderTreeItem extends Folder {
 
 /**
  * 云笔记工作区核心状态仓库
- * 管理文件夹、笔记列表、置顶排序、拖动排序、R2 图片附件与一周历史版本回退
+ * 管理文件夹、笔记列表、置顶排序、拖动排序、R2 图片附件、一周历史版本回退及最后编辑状态本地持久化
  */
 export const useNoteStore = defineStore('note', () => {
+  const authStore = useAuthStore()
+
+  function getCurrentUserId(): string | null {
+    return authStore.user?.id ?? null
+  }
+
   const folders = ref<Folder[]>([])
   const allNotes = ref<Note[]>([])
   const activeFolderId = ref<string>('all')
   const activeNoteId = ref<string | null>(null)
+  const markdownViewMode = ref<MarkdownViewMode>(
+    readPersistedEditorState(getCurrentUserId()).markdownViewMode
+  )
   const searchQuery = ref<string>('')
   const formatFilter = ref<'all' | NoteFormat>('all')
   const versions = ref<NoteVersion[]>([])
@@ -27,6 +85,35 @@ export const useNoteStore = defineStore('note', () => {
   const loading = ref(false)
   const savingState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const uploadingImage = ref(false)
+
+  /** 持久化最后编辑的笔记 ID 与 Markdown 视图模式到 localStorage */
+  function persistEditorState(
+    noteId: string | null,
+    mode: MarkdownViewMode = markdownViewMode.value
+  ) {
+    writePersistedEditorState(
+      {
+        noteId,
+        markdownViewMode: isValidMarkdownViewMode(mode) ? mode : 'split'
+      },
+      getCurrentUserId()
+    )
+  }
+
+  /** 仅记录最后一次编辑/打开的笔记 ID（保留当前 Markdown 编辑视图状态） */
+  function recordLastEditedNote(noteId: string) {
+    if (!noteId) return
+    persistEditorState(noteId, markdownViewMode.value)
+  }
+
+  /** 设置 Markdown 笔记编辑视图状态（边写边预览 / 纯编辑 / 纯预览）并持久化 */
+  function setMarkdownViewMode(mode: MarkdownViewMode) {
+    const safeMode: MarkdownViewMode = isValidMarkdownViewMode(mode) ? mode : 'split'
+    markdownViewMode.value = safeMode
+    const targetNoteId =
+      activeNoteId.value ?? readPersistedEditorState(getCurrentUserId()).noteId
+    persistEditorState(targetNoteId, safeMode)
+  }
 
   /** 当前选中的笔记对象 */
   const activeNote = computed(
@@ -114,7 +201,7 @@ export const useNoteStore = defineStore('note', () => {
     return result
   })
 
-  /** 初始化加载所有文件夹与笔记 */
+  /** 初始化加载所有文件夹与笔记（优先恢复上次记录的笔记与 Markdown 视图状态） */
   async function loadWorkspace() {
     loading.value = true
     try {
@@ -122,12 +209,29 @@ export const useNoteStore = defineStore('note', () => {
       folders.value = folderRes.folders
       allNotes.value = noteRes.notes
 
+      const persisted = readPersistedEditorState(getCurrentUserId())
+      markdownViewMode.value = persisted.markdownViewMode
+
       if (activeNoteId.value && !allNotes.value.some((n) => n.id === activeNoteId.value)) {
         activeNoteId.value = null
       }
-      if (!activeNoteId.value && filteredNotes.value.length > 0) {
-        await selectNote(filteredNotes.value[0].id)
-      } else if (activeNoteId.value) {
+      if (!activeNoteId.value) {
+        if (filteredNotes.value.length > 0) {
+          const restored = persisted.noteId
+            ? filteredNotes.value.find((n) => n.id === persisted.noteId)
+            : undefined
+          if (restored) {
+            await selectNote(restored.id, { persist: false })
+          } else {
+            if (persisted.noteId && !allNotes.value.some((n) => n.id === persisted.noteId)) {
+              persistEditorState(null, persisted.markdownViewMode)
+            }
+            await selectNote(filteredNotes.value[0].id, { persist: false })
+          }
+        } else if (persisted.noteId && !allNotes.value.some((n) => n.id === persisted.noteId)) {
+          persistEditorState(null, persisted.markdownViewMode)
+        }
+      } else {
         await loadAttachments(activeNoteId.value)
       }
     } finally {
@@ -144,7 +248,7 @@ export const useNoteStore = defineStore('note', () => {
     ) {
       const first = filteredNotes.value[0]
       if (first) {
-        await selectNote(first.id)
+        await selectNote(first.id, { persist: false })
       } else {
         activeNoteId.value = null
         attachments.value = []
@@ -153,12 +257,19 @@ export const useNoteStore = defineStore('note', () => {
   }
 
   /** 选中笔记并加载其关联 R2 图片附件 */
-  async function selectNote(noteId: string | null) {
+  async function selectNote(noteId: string | null, options: { persist?: boolean } = {}) {
+    const { persist = true } = options
     activeNoteId.value = noteId
     if (!noteId) {
       attachments.value = []
       versions.value = []
+      if (persist) {
+        persistEditorState(null, markdownViewMode.value)
+      }
       return
+    }
+    if (persist) {
+      persistEditorState(noteId, markdownViewMode.value)
     }
     await loadAttachments(noteId)
   }
@@ -246,6 +357,9 @@ export const useNoteStore = defineStore('note', () => {
       folderId: resolvedFolderId
     })
     allNotes.value.unshift(res.note)
+    if (format === 'markdown' && markdownViewMode.value === 'preview') {
+      markdownViewMode.value = 'split'
+    }
     await selectNote(res.note.id)
     savingState.value = 'saved'
     return res.note
@@ -269,6 +383,14 @@ export const useNoteStore = defineStore('note', () => {
       const idx = allNotes.value.findIndex((n) => n.id === id)
       if (idx !== -1) {
         allNotes.value[idx] = res.note
+      }
+      if (
+        activeNoteId.value === id ||
+        patch.title !== undefined ||
+        patch.content !== undefined ||
+        patch.format !== undefined
+      ) {
+        persistEditorState(id, markdownViewMode.value)
       }
       savingState.value = 'saved'
       return res.note
@@ -321,6 +443,8 @@ export const useNoteStore = defineStore('note', () => {
     if (activeNoteId.value === id) {
       const next = filteredNotes.value[0]
       await selectNote(next ? next.id : null)
+    } else if (readPersistedEditorState(getCurrentUserId()).noteId === id) {
+      persistEditorState(activeNoteId.value, markdownViewMode.value)
     }
   }
 
@@ -338,6 +462,9 @@ export const useNoteStore = defineStore('note', () => {
     if (idx !== -1) {
       allNotes.value[idx] = res.note
     }
+    if (activeNoteId.value === noteId) {
+      persistEditorState(noteId, markdownViewMode.value)
+    }
     await loadVersions(noteId)
     return res.note
   }
@@ -349,6 +476,7 @@ export const useNoteStore = defineStore('note', () => {
       const res = await filesApi.upload(file, noteId)
       if (noteId && activeNoteId.value === noteId) {
         attachments.value.unshift(res.attachment)
+        persistEditorState(noteId, markdownViewMode.value)
       }
       return res.attachment
     } finally {
@@ -368,6 +496,7 @@ export const useNoteStore = defineStore('note', () => {
     allNotes.value = []
     activeFolderId.value = 'all'
     activeNoteId.value = null
+    markdownViewMode.value = 'split'
     searchQuery.value = ''
     formatFilter.value = 'all'
     versions.value = []
@@ -380,6 +509,7 @@ export const useNoteStore = defineStore('note', () => {
     allNotes,
     activeFolderId,
     activeNoteId,
+    markdownViewMode,
     searchQuery,
     formatFilter,
     versions,
@@ -396,6 +526,8 @@ export const useNoteStore = defineStore('note', () => {
     loadWorkspace,
     selectFolder,
     selectNote,
+    setMarkdownViewMode,
+    recordLastEditedNote,
     loadAttachments,
     createFolder,
     renameFolder,

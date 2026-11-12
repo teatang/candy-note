@@ -7,6 +7,7 @@ export type LocaleCode = 'zh-CN' | 'en-US'
 export type UserRole = 'admin' | 'user'
 export type UserStatus = 'active' | 'disabled'
 export type NoteFormat = 'plain' | 'markdown'
+export type MarkdownViewMode = 'split' | 'edit' | 'preview'
 export type VersionChangeType = 'create' | 'save' | 'auto_save' | 'before_rollback'
 
 /** 安全用户信息 */
