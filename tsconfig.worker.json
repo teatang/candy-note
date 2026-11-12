@@ -10,9 +10,8 @@
     "noUnusedParameters": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "baseUrl": ".",
     "paths": {
-      "@worker/*": ["worker/*"]
+      "@worker/*": ["./worker/*"]
     }
   },
   "include": ["worker/**/*.ts", "tests/worker/**/*.ts", "tests/helpers/**/*.ts"]
