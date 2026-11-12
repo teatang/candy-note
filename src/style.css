@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+/* 声明基于 html.dark 类名的暗黑模式变体，确保手动切换日夜模式和跟随系统均生效 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 糖果笔记 (Candy Note) 主题色彩与 Element Plus 变量定制 */
+:root {
+  --candy-accent: #f43f5e;
+  --candy-accent-soft: #fff1f2;
+  --el-color-primary: #f43f5e;
+  --el-color-primary-light-3: #fb7185;
+  --el-color-primary-light-5: #fda4af;
+  --el-color-primary-light-7: #fecdd3;
+  --el-color-primary-light-8: #ffe4e6;
+  --el-color-primary-light-9: #fff1f2;
+  --el-color-primary-dark-2: #e11d48;
+  --el-border-radius-base: 10px;
+}
+
+html.dark {
+  color-scheme: dark;
+  --candy-accent: #fb7185;
+  --candy-accent-soft: rgba(244, 63, 94, 0.14);
+  --el-color-primary: #fb7185;
+  --el-color-primary-light-3: #f43f5e;
+  --el-color-primary-light-5: #e11d48;
+  --el-color-primary-light-7: #9f1239;
+  --el-color-primary-light-8: #881337;
+  --el-color-primary-light-9: rgba(244, 63, 94, 0.16);
+  --el-color-primary-dark-2: #fda4af;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 优雅极简滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+/* Markdown 预览排版样式（兼容日夜模式） */
+.candy-markdown-body {
+  line-height: 1.75;
+  font-size: 15px;
+  word-break: break-word;
+}
+.candy-markdown-body h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 1rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+.candy-markdown-body h2 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 1rem 0 0.6rem;
+}
+.candy-markdown-body h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0.85rem 0 0.5rem;
+}
+.candy-markdown-body p {
+  margin: 0.65rem 0;
+}
+.candy-markdown-body ul,
+.candy-markdown-body ol {
+  padding-left: 1.4rem;
+  margin: 0.6rem 0;
+}
+.candy-markdown-body ul {
+  list-style-type: disc;
+}
+.candy-markdown-body ol {
+  list-style-type: decimal;
+}
+.candy-markdown-body blockquote {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.9rem;
+  border-left: 3px solid var(--candy-accent);
+  background: var(--candy-accent-soft);
+  border-radius: 0 8px 8px 0;
+}
+.candy-markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88em;
+  padding: 0.15rem 0.35rem;
+  border-radius: 5px;
+  background: rgba(148, 163, 184, 0.16);
+}
+.candy-markdown-body pre {
+  margin: 0.85rem 0;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  overflow-x: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+.candy-markdown-body pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+.candy-markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.85rem 0;
+}
+.candy-markdown-body th,
+.candy-markdown-body td {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  padding: 0.45rem 0.7rem;
+  text-align: left;
+}
+.candy-markdown-body th {
+  background: rgba(148, 163, 184, 0.1);
+  font-weight: 600;
+}
+.candy-markdown-body img {
+  max-width: 100%;
+  border-radius: 10px;
+  margin: 0.75rem 0;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+}
+.candy-markdown-body a {
+  color: var(--candy-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

@@ -1,0 +1,146 @@
+<script setup lang="ts">
+import { ElMessage } from 'element-plus'
+import { reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { resolveApiErrorMessage } from '@/api/client'
+import { useAdminStore } from '@/stores/admin'
+import type { User, UserRole, UserStatus } from '@/types'
+
+/**
+ * 后台手动添加/编辑用户弹窗组件
+ */
+const props = defineProps<{
+  modelValue: boolean
+  editingUser: User | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:modelValue', val: boolean): void
+}>()
+
+const { t } = useI18n()
+const adminStore = useAdminStore()
+const submitting = ref(false)
+
+const form = reactive({
+  username: '',
+  email: '',
+  password: '',
+  role: 'user' as UserRole,
+  status: 'active' as UserStatus
+})
+
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (!open) return
+    if (props.editingUser) {
+      form.username = props.editingUser.username
+      form.email = props.editingUser.email
+      form.password = ''
+      form.role = props.editingUser.role
+      form.status = props.editingUser.status
+    } else {
+      form.username = ''
+      form.email = ''
+      form.password = ''
+      form.role = 'user'
+      form.status = 'active'
+    }
+  }
+)
+
+async function handleSubmit() {
+  submitting.value = true
+  try {
+    if (props.editingUser) {
+      await adminStore.updateUser(props.editingUser.id, {
+        username: form.username.trim(),
+        email: form.email.trim(),
+        password: form.password ? form.password : undefined,
+        role: form.role,
+        status: form.status
+      })
+      ElMessage.success(t('admin.userUpdated'))
+    } else {
+      await adminStore.createUser({
+        username: form.username.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        role: form.role,
+        status: form.status
+      })
+      ElMessage.success(t('admin.userCreated'))
+    }
+    emit('update:modelValue', false)
+  } catch (err) {
+    ElMessage.error(resolveApiErrorMessage(err))
+  } finally {
+    submitting.value = false
+  }
+}
+</script>
+
+<template>
+  <el-dialog
+    :model-value="modelValue"
+    :title="editingUser ? t('admin.editUser') : t('admin.addUser')"
+    width="440px"
+    append-to-body
+    @update:model-value="(val: boolean) => emit('update:modelValue', val)"
+  >
+    <el-form label-position="top" @submit.prevent="handleSubmit">
+      <el-form-item :label="t('admin.form.username')" required>
+        <el-input
+          v-model="form.username"
+          :placeholder="t('admin.form.usernamePlaceholder')"
+          maxlength="32"
+        />
+      </el-form-item>
+
+      <el-form-item :label="t('admin.form.email')" required>
+        <el-input
+          v-model="form.email"
+          type="email"
+          :placeholder="t('admin.form.emailPlaceholder')"
+        />
+      </el-form-item>
+
+      <el-form-item :label="t('admin.form.password')" :required="!editingUser">
+        <el-input
+          v-model="form.password"
+          type="password"
+          show-password
+          :placeholder="
+            editingUser
+              ? t('admin.form.passwordPlaceholderEdit')
+              : t('admin.form.passwordPlaceholderCreate')
+          "
+        />
+      </el-form-item>
+
+      <div class="grid grid-cols-2 gap-3">
+        <el-form-item :label="t('admin.form.role')">
+          <el-select v-model="form.role" class="w-full">
+            <el-option :label="t('admin.roleUser')" value="user" />
+            <el-option :label="t('admin.roleAdmin')" value="admin" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item :label="t('admin.form.status')">
+          <el-select v-model="form.status" class="w-full">
+            <el-option :label="t('admin.statusActive')" value="active" />
+            <el-option :label="t('admin.statusDisabled')" value="disabled" />
+          </el-select>
+        </el-form-item>
+      </div>
+
+      <div class="mt-2 flex justify-end gap-2">
+        <el-button @click="emit('update:modelValue', false)">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" native-type="submit">
+          {{ t('common.confirm') }}
+        </el-button>
+      </div>
+    </el-form>
+  </el-dialog>
+</template>
