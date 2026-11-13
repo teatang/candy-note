@@ -26,7 +26,7 @@ A minimalist, multi-user cloud note-taking web application powered by **Cloudfla
    - Supports **30-day long-term auto-login** via checkbox at login AND post-login one-click toggle in the workspace/account settings (`HttpOnly` persistent cookie).
 
 4. **Dual Note Formats, Live Split Preview & Fullscreen Mode**
-   - Supports both **Plain Text (`plain`)** and **Markdown (`markdown`)** notes.
+   - Supports both **Plain Text (`plain`)** and **Markdown (`markdown`)** notes, with confirmation prompts prior to real-time format switching to prevent accidental layout shifts and auto-saves.
    - Markdown mode provides **Split Preview (edit & preview side-by-side)**, Edit-only, and Preview-only modes, formatting toolbar shortcuts, XSS-safe rendering via `DOMPurify`, adaptive Light/Dark code block styling, and automatic new-tab opening (`target="_blank" rel="noopener noreferrer"`) for external note URLs.
    - **Fullscreen Editing & Viewing**: Enter distraction-free fullscreen mode in both Markdown (Split/Edit/Preview) and Plain Text notes, with one-click toggle or `Esc` shortcut exit.
 

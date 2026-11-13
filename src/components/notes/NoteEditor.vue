@@ -287,9 +287,41 @@ async function handleManualSave() {
 }
 
 async function handleFormatChange(format: NoteFormat) {
-  draftFormat.value = format
+  if (format === draftFormat.value) return
   const note = noteStore.activeNote
   if (!note) return
+
+  const confirmMsg =
+    format === 'plain'
+      ? t('notes.switchFormatToPlainConfirm')
+      : t('notes.switchFormatToMarkdownConfirm')
+
+  try {
+    await ElMessageBox.confirm(
+      confirmMsg,
+      t('notes.switchFormatConfirmTitle'),
+      {
+        type: 'warning',
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel')
+      }
+    )
+  } catch (err) {
+    if (err !== 'cancel' && err !== 'close') {
+      ElMessage.error(resolveApiErrorMessage(err))
+    }
+    return
+  }
+
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+  }
+
+  draftFormat.value = format
+  if (format === 'markdown' && viewMode.value === 'preview') {
+    viewMode.value = 'split'
+  }
   noteStore.recordLastEditedNote(note.id)
   try {
     await noteStore.saveNote(note.id, {
@@ -556,6 +588,7 @@ function handleKeydown(e: KeyboardEvent) {
           <!-- 格式切换：普通文本 / Markdown -->
           <div class="flex items-center rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800">
             <button
+              data-testid="format-switch-markdown"
               type="button"
               class="rounded-md px-2 py-1 text-xs transition sm:px-2.5"
               :class="
@@ -568,6 +601,7 @@ function handleKeydown(e: KeyboardEvent) {
               {{ t('notes.formatMarkdown') }}
             </button>
             <button
+              data-testid="format-switch-plain"
               type="button"
               class="rounded-md px-2 py-1 text-xs transition sm:px-2.5"
               :class="

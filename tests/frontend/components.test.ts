@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessageBox } from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -150,13 +150,22 @@ describe('Core Vue Components', () => {
     expect(previewLink.attributes('target')).toBe('_blank')
     expect(previewLink.attributes('rel')).toContain('noopener')
 
-    // 切换为普通文本模式后应关闭 Markdown 预览分栏并调用保存接口
-    const plainBtn = wrapper
-      .findAll('button')
-      .find((b) => b.text().trim() === '普通文本')
-    expect(plainBtn).toBeDefined()
-    await plainBtn!.trigger('click')
-    expect(updateSpy).toHaveBeenCalled()
+    // 切换格式前弹出确认对话框：若用户取消，则不触发保存且维持当前格式与预览
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm')
+    confirmSpy.mockRejectedValueOnce('cancel')
+
+    const plainBtn = wrapper.find('[data-testid="format-switch-plain"]')
+    expect(plainBtn.exists()).toBe(true)
+    await plainBtn.trigger('click')
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(updateSpy).not.toHaveBeenCalled()
+    expect(wrapper.find('.candy-markdown-body').exists()).toBe(true)
+
+    // 用户确认切换为普通文本模式后，应关闭 Markdown 预览分栏并调用保存接口
+    confirmSpy.mockResolvedValueOnce('confirm' as any)
+    await plainBtn.trigger('click')
+    expect(confirmSpy).toHaveBeenCalledTimes(2)
+    expect(updateSpy).toHaveBeenCalledWith('note-1', expect.objectContaining({ format: 'plain' }))
     expect(wrapper.find('.candy-markdown-body').exists()).toBe(false)
 
     wrapper.unmount()
@@ -743,6 +752,126 @@ describe('Core Vue Components', () => {
     expect(
       dialogEn!.querySelector('input[placeholder*="no @ or whitespace"]')
     ).not.toBeNull()
+
+    wrapper.unmount()
+  })
+
+  it('NoteEditor 在普通文本与 Markdown 双格式实时切换前必须弹出确认提示，用户取消则保持原格式，确认后方才切换并保存', async () => {
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({
+      notes: [
+        {
+          id: 'note-format-1',
+          userId: 'u-1',
+          folderId: null,
+          title: '格式切换测试笔记',
+          content: '# 标题内容\n正文',
+          format: 'markdown',
+          isPinned: false,
+          pinnedAt: null,
+          sortOrder: 0,
+          createdAt: 100,
+          updatedAt: 100
+        }
+      ]
+    })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+    const updateSpy = vi.spyOn(notesApi, 'update').mockImplementation(async (id, patch) => ({
+      note: {
+        id,
+        userId: 'u-1',
+        folderId: patch.folderId ?? null,
+        title: patch.title ?? '格式切换测试笔记',
+        content: patch.content ?? '# 标题内容\n正文',
+        format: patch.format ?? 'markdown',
+        isPinned: false,
+        pinnedAt: null,
+        sortOrder: 0,
+        createdAt: 100,
+        updatedAt: 101
+      }
+    }))
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteEditor, {
+      global: {
+        plugins: [pinia, i18n, ElementPlus]
+      }
+    })
+
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm')
+
+    const mdBtn = wrapper.find('[data-testid="format-switch-markdown"]')
+    const plainBtn = wrapper.find('[data-testid="format-switch-plain"]')
+    expect(mdBtn.exists()).toBe(true)
+    expect(plainBtn.exists()).toBe(true)
+
+    // 1. 点击当前已选中的 Markdown 格式：无需弹窗确认，亦不重复触发保存
+    await mdBtn.trigger('click')
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(updateSpy).not.toHaveBeenCalled()
+
+    // 2. 尝试从 Markdown 切换为普通文本 (plain)，但在确认弹窗中取消
+    confirmSpy.mockRejectedValueOnce('cancel')
+    await plainBtn.trigger('click')
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(confirmSpy).toHaveBeenLastCalledWith(
+      '确定将当前笔记切换为普通文本格式吗？切换后将关闭 Markdown 语法渲染、分栏实时预览与快捷格式工具栏。',
+      '切换笔记格式',
+      expect.objectContaining({
+        type: 'warning',
+        confirmButtonText: '确定',
+        cancelButtonText: '取消'
+      })
+    )
+    expect(updateSpy).not.toHaveBeenCalled()
+    expect(wrapper.find('.candy-markdown-body').exists()).toBe(true)
+
+    // 3. 再次点击普通文本并确认切换：触发保存，格式变为 plain，预览分栏关闭
+    confirmSpy.mockResolvedValueOnce('confirm' as any)
+    await plainBtn.trigger('click')
+    expect(confirmSpy).toHaveBeenCalledTimes(2)
+    expect(updateSpy).toHaveBeenCalledWith('note-format-1', expect.objectContaining({
+      format: 'plain',
+      changeType: 'save'
+    }))
+    expect(wrapper.find('.candy-markdown-body').exists()).toBe(false)
+
+    // 4. 当前已是普通文本，再次点击普通文本：不弹窗也不重复保存
+    await plainBtn.trigger('click')
+    expect(confirmSpy).toHaveBeenCalledTimes(2)
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+
+    // 5. 尝试从普通文本切换回 Markdown，但在确认弹窗中点击右上角关闭
+    confirmSpy.mockRejectedValueOnce('close')
+    await mdBtn.trigger('click')
+    expect(confirmSpy).toHaveBeenCalledTimes(3)
+    expect(confirmSpy).toHaveBeenLastCalledWith(
+      '确定将当前笔记切换为 Markdown 格式吗？切换后将开启 Markdown 语法渲染、分栏实时预览与快捷格式工具栏。',
+      '切换笔记格式',
+      expect.objectContaining({
+        type: 'warning',
+        confirmButtonText: '确定',
+        cancelButtonText: '取消'
+      })
+    )
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('.candy-markdown-body').exists()).toBe(false)
+
+    // 6. 再次点击 Markdown 并确认切换：触发保存，格式变为 markdown，恢复实时预览
+    confirmSpy.mockResolvedValueOnce('confirm' as any)
+    await mdBtn.trigger('click')
+    expect(confirmSpy).toHaveBeenCalledTimes(4)
+    expect(updateSpy).toHaveBeenCalledTimes(2)
+    expect(updateSpy).toHaveBeenLastCalledWith('note-format-1', expect.objectContaining({
+      format: 'markdown',
+      changeType: 'save'
+    }))
+    expect(wrapper.find('.candy-markdown-body').exists()).toBe(true)
 
     wrapper.unmount()
   })
