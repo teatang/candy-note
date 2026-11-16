@@ -960,12 +960,24 @@ function handleKeydown(e: KeyboardEvent) {
         />
       </div>
 
-      <!-- 快捷编辑工具栏（含 R2 图片上传按钮） -->
+      <!-- 全局隐藏的文件选择输入框（供 Markdown 与富文本编辑器上传图片复用） -->
+      <input
+        ref="fileInputRef"
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        multiple
+        class="hidden"
+        @change="handleFileInputChange"
+      />
+
+      <!-- Markdown 专属快捷编辑工具栏（普通文本笔记已由 Tiptap 富文本内置工具栏接管，不再展示此单独一行） -->
       <div
+        v-if="draftFormat === 'markdown'"
+        data-testid="markdown-toolbar"
         class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-3 py-1.5 sm:px-5 dark:border-slate-800 dark:bg-slate-900/60"
       >
         <div class="flex flex-wrap items-center gap-1">
-          <template v-if="draftFormat === 'markdown' && viewMode !== 'preview'">
+          <template v-if="viewMode !== 'preview'">
             <button
               type="button"
               class="rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -1050,14 +1062,6 @@ function handleKeydown(e: KeyboardEvent) {
               noteStore.uploadingImage ? t('notes.uploadingImage') : t('notes.uploadImageBtn')
             }}</span>
           </button>
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            multiple
-            class="hidden"
-            @change="handleFileInputChange"
-          />
         </div>
 
         <div class="text-[11px] text-slate-400">

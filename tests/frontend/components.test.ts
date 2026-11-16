@@ -1109,7 +1109,8 @@ describe('Core Vue Components', () => {
     })
     await flushPromises()
 
-    // 1. 验证渲染了 Tiptap 富文本编辑器与其专属工具栏
+    // 1. 验证渲染了 Tiptap 富文本编辑器与其专属工具栏，且原 Markdown 专属工具栏那一行（含单独插入图片按钮）不渲染
+    expect(wrapper.find('[data-testid="markdown-toolbar"]').exists()).toBe(false)
     const tiptapWrapper = wrapper.find('.candy-tiptap-wrapper')
     expect(tiptapWrapper.exists()).toBe(true)
 
@@ -1134,6 +1135,78 @@ describe('Core Vue Components', () => {
 
     expect(tiptapContent.html()).toContain('<img')
     expect(tiptapContent.html()).toContain('src="/api/files/test-img.png"')
+
+    wrapper.unmount()
+  })
+
+  it('TiptapEditor 富文本编辑器应支持点击工具栏全屏/退出全屏，按 Esc 键退出全屏，并正确渲染代码块结构', async () => {
+    const plainNote = {
+      id: 'note-plain-fullscreen-1',
+      userId: 'u-1',
+      folderId: null,
+      title: '富文本全屏与代码块测试',
+      content: '<pre><code>const a = 1;\nconsole.log(a);</code></pre>',
+      format: 'plain' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [plainNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    const tiptapWrapper = wrapper.find('[data-testid="candy-tiptap-editor"]')
+    expect(tiptapWrapper.exists()).toBe(true)
+    expect(tiptapWrapper.classes()).not.toContain('fixed')
+
+    // 1. 验证代码块结构
+    const preEl = wrapper.find('.candy-tiptap-content pre')
+    expect(preEl.exists()).toBe(true)
+    expect(preEl.text()).toContain('const a = 1;')
+
+    // 2. 点击工具栏的全屏按钮进入全屏模式
+    const fullscreenBtn = wrapper.find('[data-testid="tiptap-toggle-fullscreen"]')
+    expect(fullscreenBtn.exists()).toBe(true)
+    expect(fullscreenBtn.text()).toContain('全屏')
+
+    await fullscreenBtn.trigger('click')
+    await flushPromises()
+
+    // 验证全屏类名生效
+    expect(tiptapWrapper.classes()).toContain('fixed')
+    expect(tiptapWrapper.classes()).toContain('inset-0')
+    expect(tiptapWrapper.classes()).toContain('z-50')
+    expect(fullscreenBtn.text()).toContain('退出全屏')
+
+    // 3. 再次点击退出全屏
+    await fullscreenBtn.trigger('click')
+    await flushPromises()
+    expect(tiptapWrapper.classes()).not.toContain('fixed')
+    expect(fullscreenBtn.text()).toContain('全屏')
+
+    // 4. 进入全屏后，按下 Escape 键应退出全屏
+    await fullscreenBtn.trigger('click')
+    await flushPromises()
+    expect(tiptapWrapper.classes()).toContain('fixed')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(tiptapWrapper.classes()).not.toContain('fixed')
+    expect(fullscreenBtn.text()).toContain('全屏')
 
     wrapper.unmount()
   })

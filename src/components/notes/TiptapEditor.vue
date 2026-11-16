@@ -33,10 +33,26 @@ const emit = defineEmits<{
   (e: 'upload-image-request'): void
   (e: 'drop-files', files: File[]): void
   (e: 'paste-files', files: File[]): void
+  (e: 'fullscreen-change', isFullscreen: boolean): void
 }>()
 
 const editor = ref<Editor | null>(null)
 const fallbackTextareaRef = ref<HTMLTextAreaElement | null>(null)
+const isFullscreen = ref(false)
+
+function toggleFullscreen() {
+  isFullscreen.value = !isFullscreen.value
+  emit('fullscreen-change', isFullscreen.value)
+}
+
+function handleWindowKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isFullscreen.value) {
+    e.preventDefault()
+    e.stopPropagation()
+    isFullscreen.value = false
+    emit('fullscreen-change', false)
+  }
+}
 
 function handleFallbackInput(e: Event) {
   const target = e.target as HTMLTextAreaElement
@@ -49,6 +65,7 @@ function handleFallbackInput(e: Event) {
 }
 
 onMounted(() => {
+  window.addEventListener('keydown', handleWindowKeydown)
   editor.value = new Editor({
     content: props.modelValue || '',
     editable: props.editable,
@@ -121,6 +138,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleWindowKeydown)
   editor.value?.destroy()
   editor.value = null
 })
@@ -177,15 +195,30 @@ async function handleSetLink() {
   }
 }
 
+const textCharCount = computed(() => {
+  if (!editor.value) return 0
+  return editor.value.getText().length
+})
+
 defineExpose({
   editor,
+  isFullscreen,
+  toggleFullscreen,
   insertImage,
   focus: () => editor.value?.commands.focus()
 })
 </script>
 
 <template>
-  <div class="candy-tiptap-wrapper flex flex-1 flex-col min-h-0 w-full overflow-hidden">
+  <div
+    data-testid="candy-tiptap-editor"
+    class="candy-tiptap-wrapper flex flex-col min-h-0 w-full"
+    :class="
+      isFullscreen
+        ? 'fixed inset-0 z-50 h-screen w-screen bg-white dark:bg-slate-950'
+        : 'flex-1 overflow-hidden'
+    "
+  >
     <!-- 富文本格式工具栏 -->
     <div
       v-if="editor"
@@ -421,11 +454,65 @@ defineExpose({
       >
         ✕ 清除
       </button>
+
+      <!-- 全屏切换按钮 -->
+      <div class="ml-auto flex items-center gap-2 pl-2">
+        <span class="text-[11px] text-slate-400 select-none">
+          {{ textCharCount }} 字符
+        </span>
+        <button
+          type="button"
+          data-testid="tiptap-toggle-fullscreen"
+          class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition"
+          :class="
+            isFullscreen
+              ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-500/25 dark:text-rose-300'
+              : 'text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800'
+          "
+          :title="isFullscreen ? '退出全屏 (Esc)' : '全屏编辑 (Esc退出)'"
+          @click="toggleFullscreen"
+        >
+          <svg
+            v-if="isFullscreen"
+            class="h-3.5 w-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M9 9L4 4m0 0h4m-4 0v4m11 5l5 5m0 0h-4m4 0v-4m-5-11l5-5m0 0h-4m4 0v4M9 15l-5 5m0 0h4m-4 0v-4"
+            />
+          </svg>
+          <svg
+            v-else
+            class="h-3.5 w-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+            />
+          </svg>
+          <span>{{ isFullscreen ? '退出全屏' : '全屏' }}</span>
+        </button>
+      </div>
     </div>
 
     <!-- Tiptap 编辑容器 -->
-    <div class="candy-tiptap-scroll flex-1 min-h-0 overflow-y-auto">
-      <editor-content :editor="editor" class="h-full" />
+    <div
+      class="candy-tiptap-scroll flex-1 min-h-0 overflow-y-auto"
+      :class="isFullscreen ? 'p-4 sm:p-8' : ''"
+    >
+      <div :class="isFullscreen ? 'max-w-4xl mx-auto h-full' : 'h-full'">
+        <editor-content :editor="editor" class="h-full" />
+      </div>
     </div>
 
     <!-- 同步隐藏 textarea，便于无障碍辅助、表单回退及单元测试兼容 -->
@@ -508,35 +595,54 @@ defineExpose({
   background-color: rgba(244, 63, 94, 0.1);
 }
 
-.candy-tiptap-content code {
+/* 行内代码样式：排除 pre 内的代码，日间模式浅灰底 + 细边框，夜间模式暗色底 */
+.candy-tiptap-content :not(pre) > code {
   background-color: #f1f5f9;
   color: #e11d48;
   padding: 0.15rem 0.35rem;
   border-radius: 0.25rem;
   font-size: 0.85em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  border: 1px solid #e2e8f0;
 }
 
-.dark .candy-tiptap-content code {
+.dark .candy-tiptap-content :not(pre) > code {
   background-color: #1e293b;
   color: #fda4af;
+  border-color: #334155;
 }
 
+/* 多行代码块 (pre)：
+   日间模式采用明亮清爽的浅灰底色 (#f8fafc) + 清晰深色文字 (#1e293b) + 细边框 (#e2e8f0)，解决日间模式黑底或文字反差异常问题；
+   夜间模式保持深蓝黑底色 (#0f172a) + 亮浅文字 (#e2e8f0) + 深色边框 (#1e293b)
+*/
 .candy-tiptap-content pre {
-  background-color: #0f172a;
-  color: #f8fafc;
-  padding: 0.85rem 1rem;
+  background-color: #f8fafc;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+  padding: 0.85rem 1.15rem;
   border-radius: 0.5rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
+  line-height: 1.65;
   overflow-x: auto;
-  margin: 0.75rem 0;
+  margin: 0.85rem 0;
 }
 
+.dark .candy-tiptap-content pre {
+  background-color: #0f172a;
+  color: #e2e8f0;
+  border-color: #1e293b;
+}
+
+/* 代码块内部 code 必须纯粹继承 pre 样式，不得继承行内代码的红字与背景 */
 .candy-tiptap-content pre code {
-  background-color: transparent;
-  color: inherit;
-  padding: 0;
+  background-color: transparent !important;
+  color: inherit !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
 }
 
 .candy-tiptap-content hr {
