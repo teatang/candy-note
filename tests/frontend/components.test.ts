@@ -1362,4 +1362,53 @@ describe('Core Vue Components', () => {
 
     wrapper.unmount()
   })
+
+  it('Markdown 笔记在纯预览模式下不应显示“插入图片”按钮，仅在编辑/分栏模式下显示', async () => {
+    const markdownNote = {
+      id: 'note-md-preview-mode-1',
+      userId: 'u-1',
+      folderId: null,
+      title: '预览模式测试',
+      content: '# 标题\n\n正文内容',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [markdownNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    noteStore.setMarkdownViewMode('split')
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    // 1. 分栏模式下存在插入图片按钮
+    expect(wrapper.find('[data-testid="markdown-upload-image-btn"]').exists()).toBe(true)
+
+    // 2. 切换至纯编辑模式，插入图片按钮依然存在
+    noteStore.setMarkdownViewMode('edit')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="markdown-upload-image-btn"]').exists()).toBe(true)
+
+    // 3. 切换至纯预览模式，插入图片按钮以及快捷排版按钮均不应存在
+    noteStore.setMarkdownViewMode('preview')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="markdown-upload-image-btn"]').exists()).toBe(false)
+    expect(wrapper.find('button[title^="一级标题"]').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
 })

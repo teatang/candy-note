@@ -655,6 +655,9 @@ function handleFileInputChange(e: Event) {
 
 function handleDropFiles(e: DragEvent) {
   isDraggingFile.value = false
+  if (draftFormat.value === 'markdown' && viewMode.value === 'preview') {
+    return
+  }
   if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
     e.preventDefault()
     uploadImageFiles(Array.from(e.dataTransfer.files))
@@ -662,6 +665,9 @@ function handleDropFiles(e: DragEvent) {
 }
 
 function handleDragOverFiles(e: DragEvent) {
+  if (draftFormat.value === 'markdown' && viewMode.value === 'preview') {
+    return
+  }
   if (e.dataTransfer?.types.includes('Files')) {
     e.preventDefault()
     isDraggingFile.value = true
@@ -669,6 +675,9 @@ function handleDragOverFiles(e: DragEvent) {
 }
 
 function handlePaste(e: ClipboardEvent) {
+  if (draftFormat.value === 'markdown' && viewMode.value === 'preview') {
+    return
+  }
   const items = e.clipboardData?.items
   if (!items) return
   const files: File[] = []
@@ -1033,18 +1042,19 @@ function handleKeydown(e: KeyboardEvent) {
             >
               Table
             </button>
-          </template>
 
-          <button
-            type="button"
-            class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-500/15"
-            @click="fileInputRef?.click()"
-          >
-            <el-icon><Picture /></el-icon>
-            <span>{{
-              noteStore.uploadingImage ? t('notes.uploadingImage') : t('notes.uploadImageBtn')
-            }}</span>
-          </button>
+            <button
+              type="button"
+              data-testid="markdown-upload-image-btn"
+              class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-500/15"
+              @click="fileInputRef?.click()"
+            >
+              <el-icon><Picture /></el-icon>
+              <span>{{
+                noteStore.uploadingImage ? t('notes.uploadingImage') : t('notes.uploadImageBtn')
+              }}</span>
+            </button>
+          </template>
         </div>
 
         <div class="text-[11px] text-slate-400">
