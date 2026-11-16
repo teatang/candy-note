@@ -693,6 +693,7 @@ noteRoutes.post('/:id/share', async (c) => {
     .first<NoteShareRow>()
 
   let passwordHash = existingShare?.password_hash ?? null
+  let sharePassword = existingShare?.share_password ?? null
   if (hasPassword) {
     const rawPwd = (body?.password ?? '').trim()
     if (rawPwd) {
@@ -700,24 +701,27 @@ noteRoutes.post('/:id/share', async (c) => {
         return apiError(c, 400, 'VALIDATION_ERROR', '访问密码长度需在 1-32 位之间')
       }
       passwordHash = await hashPassword(rawPwd)
+      sharePassword = rawPwd
     } else if (!passwordHash) {
       return apiError(c, 400, 'VALIDATION_ERROR', '开启密码访问时必须设置访问密码')
     }
   } else {
     passwordHash = null
+    sharePassword = null
   }
 
   // 3. 写入或更新附属表 note_shares
   if (existingShare) {
     await c.env.DB.prepare(
       `UPDATE note_shares
-       SET is_enabled = ?, has_password = ?, password_hash = ?, expires_at = ?, updated_at = ?
+       SET is_enabled = ?, has_password = ?, password_hash = ?, share_password = ?, expires_at = ?, updated_at = ?
        WHERE id = ? AND user_id = ?`
     )
       .bind(
         isEnabled ? 1 : 0,
         hasPassword ? 1 : 0,
         passwordHash,
+        sharePassword,
         expiresAt,
         now,
         existingShare.id,
@@ -730,6 +734,7 @@ noteRoutes.post('/:id/share', async (c) => {
       is_enabled: isEnabled ? 1 : 0,
       has_password: hasPassword ? 1 : 0,
       password_hash: passwordHash,
+      share_password: sharePassword,
       expires_at: expiresAt,
       updated_at: now
     }
@@ -743,9 +748,9 @@ noteRoutes.post('/:id/share', async (c) => {
     const shareCode = generateShareCode(10)
     await c.env.DB.prepare(
       `INSERT INTO note_shares (
-         id, note_id, user_id, share_code, is_enabled, has_password, password_hash,
+         id, note_id, user_id, share_code, is_enabled, has_password, password_hash, share_password,
          expires_at, view_count, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
     )
       .bind(
         id,
@@ -755,6 +760,7 @@ noteRoutes.post('/:id/share', async (c) => {
         isEnabled ? 1 : 0,
         hasPassword ? 1 : 0,
         passwordHash,
+        sharePassword,
         expiresAt,
         now,
         now
@@ -769,6 +775,7 @@ noteRoutes.post('/:id/share', async (c) => {
       is_enabled: isEnabled ? 1 : 0,
       has_password: hasPassword ? 1 : 0,
       password_hash: passwordHash,
+      share_password: sharePassword,
       expires_at: expiresAt,
       view_count: 0,
       created_at: now,

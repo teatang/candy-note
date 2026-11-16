@@ -51,10 +51,14 @@ const isExpired = computed(() => {
 
 const shareUrl = computed(() => {
   if (!share.value?.shareCode) return ''
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}/share/${share.value.shareCode}`
+  const base = typeof window !== 'undefined'
+    ? `${window.location.origin}/share/${share.value.shareCode}`
+    : `/share/${share.value.shareCode}`
+  const pwd = password.value.trim() || share.value?.sharePassword || ''
+  if (hasPassword.value && pwd) {
+    return `${base}?password=${encodeURIComponent(pwd)}`
   }
-  return `/share/${share.value.shareCode}`
+  return base
 })
 
 /** 生成 4 位随机访问密码（字母与数字） */
@@ -110,12 +114,13 @@ async function fetchShareConfig() {
       } else {
         duration.value = '7d' // 默认选项保留，保存时可重新指定时长
       }
+      password.value = res.share.sharePassword || ''
     } else {
       isEnabled.value = false
       hasPassword.value = false
       duration.value = 'permanent'
+      password.value = ''
     }
-    password.value = ''
   } catch (err) {
     ElMessage.error(resolveApiErrorMessage(err))
   } finally {
@@ -147,7 +152,9 @@ async function handleSave() {
       password: password.value.trim() || undefined
     })
     share.value = res.share
-    password.value = ''
+    if (res.share.sharePassword) {
+      password.value = res.share.sharePassword
+    }
     ElMessage.success(t('shares.saveShareSuccess'))
     emit('share-updated', res.share)
   } catch (err) {

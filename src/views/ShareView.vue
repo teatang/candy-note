@@ -34,6 +34,12 @@ const shareCode = computed(() => {
   return typeof code === 'string' ? code.trim() : ''
 })
 
+const queryPassword = computed(() => {
+  const q = route.query
+  const val = q.password || q.share_code || q.pwd
+  return typeof val === 'string' ? val.trim() : ''
+})
+
 const loading = ref(true)
 const submittingPassword = ref(false)
 const sharedNote = ref<PublicSharedNote | null>(null)
@@ -65,8 +71,10 @@ async function fetchPublicNote(pwd?: string) {
   loading.value = true
   passwordError.value = ''
 
+  const effectivePwd = pwd !== undefined ? pwd : queryPassword.value
+
   try {
-    const res = await publicShareApi.get(shareCode.value, pwd)
+    const res = await publicShareApi.get(shareCode.value, effectivePwd || undefined)
     const noteData = res.note || res.share || null
     sharedNote.value = noteData
 
@@ -77,6 +85,9 @@ async function fetchPublicNote(pwd?: string) {
 
     if (isPwdRequired) {
       passwordRequired.value = true
+      if (effectivePwd) {
+        passwordError.value = t('errors.SHARE_INVALID_PASSWORD')
+      }
     } else {
       passwordRequired.value = false
     }
@@ -86,6 +97,10 @@ async function fetchPublicNote(pwd?: string) {
     const code = err?.code || err?.data?.error?.code
     if (code === 'SHARE_PASSWORD_REQUIRED') {
       passwordRequired.value = true
+      errorCode.value = null
+    } else if (code === 'SHARE_INVALID_PASSWORD' || (status === 401 && effectivePwd)) {
+      passwordRequired.value = true
+      passwordError.value = t('errors.SHARE_INVALID_PASSWORD')
       errorCode.value = null
     } else if (code === 'SHARE_EXPIRED' || status === 410) {
       errorCode.value = 'EXPIRED'
@@ -131,7 +146,7 @@ async function handleUnlock() {
 }
 
 watch(
-  () => shareCode.value,
+  [() => shareCode.value, () => queryPassword.value],
   () => {
     fetchPublicNote()
   }

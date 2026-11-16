@@ -130,6 +130,7 @@ export interface NoteShareRow {
   is_enabled: number
   has_password: number
   password_hash: string | null
+  share_password?: string | null
   expires_at: number | null
   view_count: number
   created_at: number
@@ -143,6 +144,7 @@ export interface NoteShareDto {
   shareCode: string
   isEnabled: boolean
   hasPassword: boolean
+  sharePassword?: string | null
   expiresAt: number | null
   viewCount: number
   createdAt: number

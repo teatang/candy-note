@@ -16,6 +16,7 @@ interface JoinedShareNoteRow {
   s_is_enabled: number
   s_has_password: number
   s_password_hash: string | null
+  s_share_password: string | null
   s_expires_at: number | null
   s_view_count: number
   s_created_at: number
@@ -37,6 +38,7 @@ async function queryShare(db: D1Database, code: string): Promise<JoinedShareNote
       s.is_enabled AS s_is_enabled,
       s.has_password AS s_has_password,
       s.password_hash AS s_password_hash,
+      s.share_password AS s_share_password,
       s.expires_at AS s_expires_at,
       s.view_count AS s_view_count,
       s.created_at AS s_created_at,
@@ -81,9 +83,15 @@ publicShareRoutes.get('/:code', async (c) => {
 
   // 检查是否需要密码
   if (row.s_has_password === 1) {
-    const pwd = c.req.query('password') || c.req.header('x-share-password')
+    const pwd =
+      c.req.query('password') ||
+      c.req.query('share_code') ||
+      c.req.query('pwd') ||
+      c.req.header('x-share-password')
     if (pwd) {
-      const match = row.s_password_hash ? await verifyPassword(pwd, row.s_password_hash) : false
+      const match =
+        (row.s_share_password && row.s_share_password === pwd) ||
+        (row.s_password_hash ? await verifyPassword(pwd, row.s_password_hash) : false)
       if (!match) {
         return apiError(c, 401, 'SHARE_INVALID_PASSWORD', '访问密码错误，请重新输入')
       }
@@ -188,7 +196,9 @@ publicShareRoutes.post('/:code/access', async (c) => {
     if (!password) {
       return apiError(c, 400, 'SHARE_PASSWORD_REQUIRED', '请输入访问密码')
     }
-    const match = row.s_password_hash ? await verifyPassword(password, row.s_password_hash) : false
+    const match =
+      (row.s_share_password && row.s_share_password === password) ||
+      (row.s_password_hash ? await verifyPassword(password, row.s_password_hash) : false)
     if (!match) {
       return apiError(c, 401, 'SHARE_INVALID_PASSWORD', '访问密码错误，请重新输入')
     }

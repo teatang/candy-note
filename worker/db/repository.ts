@@ -94,6 +94,7 @@ export function toNoteShareDto(row: NoteShareRow): NoteShareDto {
     shareCode: row.share_code,
     isEnabled: row.is_enabled === 1,
     hasPassword: row.has_password === 1,
+    sharePassword: row.share_password ?? null,
     expiresAt: row.expires_at,
     viewCount: row.view_count,
     createdAt: row.created_at,

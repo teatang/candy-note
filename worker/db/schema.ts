@@ -112,6 +112,7 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
     is_enabled INTEGER NOT NULL DEFAULT 1,
     has_password INTEGER NOT NULL DEFAULT 0,
     password_hash TEXT,
+    share_password TEXT,
     expires_at INTEGER,
     view_count INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,

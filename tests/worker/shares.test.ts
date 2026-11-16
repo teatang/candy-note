@@ -131,9 +131,10 @@ describe('Note Share API & Public External Access', () => {
       )
       expect(setShareRes.status).toBe(201)
       const { share } = (await setShareRes.json()) as {
-        share: { shareCode: string; hasPassword: boolean; expiresAt: number }
+        share: { shareCode: string; hasPassword: boolean; expiresAt: number; sharePassword?: string | null }
       }
       expect(share.hasPassword).toBe(true)
+      expect(share.sharePassword).toBe('SecretPassword99')
       expect(share.expiresAt).toBeGreaterThan(Date.now())
 
       // 2. 外部访客不带密码访问：应返回 requirePassword: true 且不泄露正文
@@ -169,7 +170,39 @@ describe('Note Share API & Public External Access', () => {
       expect(correctBody.note.content).toBe('<p>绝密内容不可直接阅读</p>')
       expect(correctBody.note.format).toBe('plain')
 
-      // 5. 将数据库过期时间手动模拟为过去时间戳，验证过期访问返回 410
+      // 5. 通过 GET 请求参数 ?password=SecretPassword99 直接访问：成功返回正文
+      const getWithPwdRes = await harness.request(
+        `/api/share/${share.shareCode}?password=SecretPassword99`
+      )
+      expect(getWithPwdRes.status).toBe(200)
+      const getWithPwdBody = (await getWithPwdRes.json()) as {
+        ok: boolean
+        requirePassword: boolean
+        note: { content: string }
+      }
+      expect(getWithPwdBody.requirePassword).toBe(false)
+      expect(getWithPwdBody.note.content).toBe('<p>绝密内容不可直接阅读</p>')
+
+      // 5.1 通过 query 参数 share_code 直接访问：成功返回正文
+      const getWithShareCodeRes = await harness.request(
+        `/api/share/${share.shareCode}?share_code=SecretPassword99`
+      )
+      expect(getWithShareCodeRes.status).toBe(200)
+      const getWithShareCodeBody = (await getWithShareCodeRes.json()) as {
+        ok: boolean
+        requirePassword: boolean
+        note: { content: string }
+      }
+      expect(getWithShareCodeBody.requirePassword).toBe(false)
+      expect(getWithShareCodeBody.note.content).toBe('<p>绝密内容不可直接阅读</p>')
+
+      // 5.2 query 传错密码时直接返回 401
+      const getWithWrongPwdRes = await harness.request(
+        `/api/share/${share.shareCode}?password=WrongPassword123`
+      )
+      expect(getWithWrongPwdRes.status).toBe(401)
+
+      // 6. 将数据库过期时间手动模拟为过去时间戳，验证过期访问返回 410
       await harness.db.sqlite
         .prepare(`UPDATE note_shares SET expires_at = ? WHERE share_code = ?`)
         .run(Date.now() - 1000, share.shareCode)

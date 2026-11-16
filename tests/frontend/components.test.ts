@@ -1666,6 +1666,12 @@ describe('Core Vue Components', () => {
       })
     )
 
+    // 校验保存后分享链接自动附带 ?password=secret123
+    const shareUrlInput = (document.body.querySelector('[data-testid="share-url-input"] input') ||
+      document.body.querySelector('[data-testid="share-url-input"]')) as HTMLInputElement
+    expect(shareUrlInput).not.toBeNull()
+    expect(shareUrlInput.value).toContain('?password=secret123')
+
     wrapper.unmount()
   })
 
@@ -1773,6 +1779,54 @@ describe('Core Vue Components', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="share-expired"]').exists()).toBe(true)
+    wrapper.unmount()
+
+    // 4. URL 中带有 ?password=direct-pwd 直接免验证查看笔记正文
+    vi.spyOn(publicShareApi, 'get').mockImplementation(async (code, pwd) => {
+      if (pwd === 'direct-pwd') {
+        return {
+          ok: true,
+          requirePassword: false,
+          note: {
+            shareCode: 'urlpwd789',
+            title: 'URL免密直达笔记',
+            format: 'markdown',
+            content: '直接展现无需输入',
+            authorName: 'alice',
+            requirePassword: false,
+            expiresAt: null,
+            createdAt: 3000,
+            viewCount: 10
+          }
+        }
+      }
+      return {
+        ok: true,
+        requirePassword: true,
+        note: {
+          shareCode: 'urlpwd789',
+          title: 'URL免密直达笔记',
+          authorName: 'alice',
+          requirePassword: true,
+          expiresAt: null,
+          createdAt: 3000,
+          viewCount: 9
+        }
+      }
+    })
+
+    await router.push('/share/urlpwd789?password=direct-pwd')
+    await flushPromises()
+
+    wrapper = mount(ShareView, {
+      global: { plugins: [pinia, router, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="shared-note-article"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="share-password-box"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('URL免密直达笔记')
+    expect(wrapper.text()).toContain('直接展现无需输入')
     wrapper.unmount()
   })
 })

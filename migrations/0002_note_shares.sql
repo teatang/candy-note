@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS note_shares (
   is_enabled INTEGER NOT NULL DEFAULT 1,                          -- 是否启用分享 (1=开启, 0=关闭)
   has_password INTEGER NOT NULL DEFAULT 0,                        -- 是否需要密码 (1=需要, 0=公开)
   password_hash TEXT,                                             -- PBKDF2 访问密码哈希
+  share_password TEXT,                                            -- 访问密码明文（用于分享链接和所有者回显）
   expires_at INTEGER,                                             -- 过期时间戳毫秒 (NULL=永久有效)
   view_count INTEGER NOT NULL DEFAULT 0,                          -- 访问查看次数
   created_at INTEGER NOT NULL,                                    -- 创建时间戳 (毫秒)
