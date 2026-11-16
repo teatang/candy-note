@@ -3,9 +3,88 @@ import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import StarterKit from '@tiptap/starter-kit'
-import { Editor, EditorContent } from '@tiptap/vue-3'
+import { Editor, EditorContent, VueNodeViewRenderer, mergeAttributes } from '@tiptap/vue-3'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import TiptapResizableImage from './TiptapResizableImage.vue'
+
+/**
+ * 自定义可调整尺寸与对齐的 Tiptap 图片扩展
+ * - 支持图片拖拽手柄自由改变大小
+ * - 支持快捷预设尺寸（25%、50%、75%、100%）与自定义数值输入
+ * - 支持居左、居中、居右对齐
+ * - 将宽高与对齐样式持久化到 HTML，多端自适应渲染
+ */
+const ResizableImage = Image.extend({
+  name: 'image',
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: '100%',
+        parseHTML: (element: HTMLElement) => {
+          return (
+            element.getAttribute('width') ||
+            element.style.width ||
+            element.getAttribute('data-width') ||
+            '100%'
+          )
+        },
+        renderHTML: (attributes) => {
+          if (!attributes.width) return {}
+          return {
+            width: attributes.width,
+            'data-width': attributes.width
+          }
+        }
+      },
+      alignment: {
+        default: 'center',
+        parseHTML: (element: HTMLElement) => {
+          return (
+            element.getAttribute('data-alignment') ||
+            (element.style.marginLeft === '0px'
+              ? 'left'
+              : element.style.marginRight === '0px'
+                ? 'right'
+                : 'center') ||
+            'center'
+          )
+        },
+        renderHTML: (attributes) => {
+          return {
+            'data-alignment': attributes.alignment || 'center'
+          }
+        }
+      }
+    }
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    const width = node.attrs.width || '100%'
+    const align = node.attrs.alignment || 'center'
+    let margin = 'margin: 0.75rem auto;'
+    if (align === 'left') {
+      margin = 'margin: 0.75rem auto 0.75rem 0;'
+    } else if (align === 'right') {
+      margin = 'margin: 0.75rem 0 0.75rem auto;'
+    }
+    const widthStyle = width ? `width: ${width}; max-width: 100%;` : 'max-width: 100%;'
+    const style = `display: block; ${margin} ${widthStyle}`
+
+    return [
+      'img',
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+        style,
+        width,
+        'data-width': width,
+        'data-alignment': align
+      })
+    ]
+  },
+  addNodeView() {
+    return VueNodeViewRenderer(TiptapResizableImage)
+  }
+})
 
 /**
  * Tiptap 富文本编辑器组件
@@ -76,7 +155,7 @@ onMounted(() => {
         },
         link: false
       }),
-      Image.configure({
+      ResizableImage.configure({
         inline: false,
         allowBase64: true,
         HTMLAttributes: {
@@ -166,9 +245,9 @@ watch(
   }
 )
 
-function insertImage(url: string, alt = '') {
+function insertImage(url: string, alt = '', width = '100%') {
   if (!editor.value) return
-  editor.value.chain().focus().setImage({ src: url, alt }).run()
+  editor.value.chain().focus().setImage({ src: url, alt, width } as any).run()
 }
 
 async function handleSetLink() {
@@ -669,8 +748,12 @@ defineExpose({
   max-width: 100%;
   height: auto;
   border-radius: 0.5rem;
-  margin: 0.75rem 0;
   border: 1px solid #e2e8f0;
+}
+
+.candy-tiptap-content .candy-image-box img.candy-tiptap-image {
+  margin: 0;
+  width: 100%;
 }
 
 .dark .candy-tiptap-content img.candy-tiptap-image {

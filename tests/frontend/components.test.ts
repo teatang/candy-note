@@ -1210,4 +1210,98 @@ describe('Core Vue Components', () => {
 
     wrapper.unmount()
   })
+
+  it('Tiptap 富文本编辑器中的图片应支持自由调整大小、快捷预设尺寸、对齐切换与删除', async () => {
+    const plainNote = {
+      id: 'note-plain-image-resize-1',
+      userId: 'u-1',
+      folderId: null,
+      title: '富文本图片缩放测试',
+      content: '<p>前文段落</p><img src="/api/files/sample.png" alt="样例图">',
+      format: 'plain' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [plainNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    // 1. 验证图片节点和外层盒子渲染
+    const imageBox = wrapper.find('[data-testid="candy-resizable-image-box"]')
+    expect(imageBox.exists()).toBe(true)
+    const imgEl = wrapper.find('[data-testid="candy-tiptap-image-el"]')
+    expect(imgEl.exists()).toBe(true)
+    expect(imgEl.attributes('src')).toBe('/api/files/sample.png')
+
+    // 2. 点击图片唤起缩放控制工具栏与拖拽手柄
+    await imgEl.trigger('click')
+    await flushPromises()
+
+    const imageToolbar = wrapper.find('[data-testid="candy-image-toolbar"]')
+    expect(imageToolbar.exists()).toBe(true)
+    expect(wrapper.find('[data-testid="resize-handle-right"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="resize-handle-se"]').exists()).toBe(true)
+
+    // 3. 点击 50% 快捷尺寸预设
+    const preset50Btn = wrapper.find('[data-testid="size-preset-50%"]')
+    expect(preset50Btn.exists()).toBe(true)
+    await preset50Btn.trigger('click')
+    await flushPromises()
+
+    // 验证盒子宽度与 HTML 序列化结果已更新为 50%
+    expect(imageBox.attributes('style')).toContain('width: 50%')
+    const tiptapComp = wrapper.findComponent({ name: 'TiptapEditor' })
+    const htmlAfter50 = (tiptapComp.vm as any).editor?.getHTML()
+    expect(htmlAfter50).toContain('width="50%"')
+    expect(htmlAfter50).toContain('width: 50%')
+
+    // 4. 点击 25% 快捷尺寸预设
+    const preset25Btn = wrapper.find('[data-testid="size-preset-25%"]')
+    await preset25Btn.trigger('click')
+    await flushPromises()
+    expect(imageBox.attributes('style')).toContain('width: 25%')
+    expect((tiptapComp.vm as any).editor?.getHTML()).toContain('width="25%"')
+
+    // 5. 点击居左对齐按钮
+    const alignLeftBtn = wrapper.find('[data-testid="align-left-btn"]')
+    await alignLeftBtn.trigger('click')
+    await flushPromises()
+    const container = wrapper.find('.candy-resizable-image-container')
+    expect(container.classes()).toContain('justify-start')
+    expect((tiptapComp.vm as any).editor?.getHTML()).toContain('data-alignment="left"')
+
+    // 6. 测试鼠标拖拽缩放手柄
+    const handleRight = wrapper.find('[data-testid="resize-handle-right"]')
+    handleRight.trigger('mousedown', { clientX: 200 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 350 }))
+    await flushPromises()
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    await flushPromises()
+
+    // 7. 测试删除图片按钮
+    const deleteBtn = wrapper.find('[data-testid="delete-image-btn"]')
+    expect(deleteBtn.exists()).toBe(true)
+    await deleteBtn.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="candy-resizable-image-box"]').exists()).toBe(false)
+    expect((tiptapComp.vm as any).editor?.getHTML()).not.toContain('sample.png')
+
+    wrapper.unmount()
+  })
 })
