@@ -1075,4 +1075,66 @@ describe('Core Vue Components', () => {
     wrapper.unmount()
     vi.useRealTimers()
   })
+
+  it('NoteEditor 在普通文本笔记模式下应渲染 Tiptap 富文本编辑器与工具栏，并支持富文本排版与图片插入', async () => {
+    const plainNote = {
+      id: 'note-plain-tiptap-1',
+      userId: 'u-1',
+      folderId: null,
+      title: '富文本笔记测试',
+      content: '<p>欢迎使用 <strong>Tiptap</strong> 富文本编辑器</p>',
+      format: 'plain' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [plainNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+    vi.spyOn(notesApi, 'update').mockResolvedValue({
+      note: { ...plainNote, updatedAt: 200 }
+    })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    // 1. 验证渲染了 Tiptap 富文本编辑器与其专属工具栏
+    const tiptapWrapper = wrapper.find('.candy-tiptap-wrapper')
+    expect(tiptapWrapper.exists()).toBe(true)
+
+    const tiptapToolbar = wrapper.find('.candy-tiptap-toolbar')
+    expect(tiptapToolbar.exists()).toBe(true)
+    expect(tiptapToolbar.find('button[title="一级标题"]').exists()).toBe(true)
+    expect(tiptapToolbar.find('button[title^="加粗"]').exists()).toBe(true)
+    expect(tiptapToolbar.find('button[title^="斜体"]').exists()).toBe(true)
+    expect(tiptapToolbar.find('button[title="无序列表"]').exists()).toBe(true)
+    expect(tiptapToolbar.find('button[title="代码块"]').exists()).toBe(true)
+
+    // 2. 验证 Tiptap 编辑器内容初始化渲染正常
+    const tiptapContent = wrapper.find('.candy-tiptap-content')
+    expect(tiptapContent.exists()).toBe(true)
+    expect(tiptapContent.html()).toContain('<strong>Tiptap</strong>')
+
+    // 3. 测试通过富文本组件实例插入图片
+    const tiptapComponent = wrapper.findComponent({ name: 'TiptapEditor' })
+    expect(tiptapComponent.exists()).toBe(true)
+    tiptapComponent.vm.insertImage('/api/files/test-img.png', '测试图片')
+    await flushPromises()
+
+    expect(tiptapContent.html()).toContain('<img')
+    expect(tiptapContent.html()).toContain('src="/api/files/test-img.png"')
+
+    wrapper.unmount()
+  })
 })

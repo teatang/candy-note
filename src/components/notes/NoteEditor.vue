@@ -22,6 +22,7 @@ import type { MarkdownViewMode, Note, NoteFormat } from '@/types'
 import { formatBytes } from '@/utils/date'
 import { renderMarkdownSafe } from '@/utils/markdown'
 import NoteConflictDialog, { type NoteConflictPayload } from './NoteConflictDialog.vue'
+import TiptapEditor from './TiptapEditor.vue'
 import VersionHistoryDrawer from './VersionHistoryDrawer.vue'
 
 /**
@@ -53,6 +54,7 @@ const resolvingConflict = ref(false)
 const conflictAutoSavePaused = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const tiptapRef = ref<InstanceType<typeof TiptapEditor> | null>(null)
 
 // 跟踪当前编辑器加载展示的笔记 ID
 const currentLoadedNoteId = ref<string | null>(null)
@@ -192,6 +194,13 @@ onBeforeUnmount(() => {
 const renderedMarkdownHtml = computed(() => {
   if (draftFormat.value !== 'markdown') return ''
   return renderMarkdownSafe(draftContent.value)
+})
+
+const displayWordCount = computed(() => {
+  if (draftFormat.value === 'markdown') {
+    return draftContent.value.length
+  }
+  return draftContent.value.replace(/<[^>]+>/g, '').trim().length
 })
 
 const hasUnsavedChanges = computed(() => {
@@ -500,6 +509,13 @@ async function handleFormatChange(format: NoteFormat) {
     autoSaveTimer = null
   }
 
+  // 格式相互转换支持：从 Markdown 转为富文本时将语法渲染为标准 HTML 载入富文本
+  if (format === 'plain' && draftFormat.value === 'markdown') {
+    if (draftContent.value.trim()) {
+      draftContent.value = renderMarkdownSafe(draftContent.value)
+    }
+  }
+
   draftFormat.value = format
   if (format === 'markdown' && viewMode.value === 'preview') {
     viewMode.value = 'split'
@@ -621,7 +637,7 @@ async function uploadImageFiles(files: File[]) {
       if (draftFormat.value === 'markdown') {
         insertAtCursor(`\n![${attachment.filename}](${attachment.url})\n`)
       } else {
-        insertAtCursor(`\n[${attachment.filename}] ${attachment.url}\n`)
+        tiptapRef.value?.insertImage(attachment.url, attachment.filename)
       }
       ElMessage.success(t('notes.uploadImageSuccess'))
     } catch (err) {
@@ -1045,7 +1061,7 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         <div class="text-[11px] text-slate-400">
-          {{ t('notes.wordCount', { count: draftContent.length }) }}
+          {{ t('notes.wordCount', { count: displayWordCount }) }}
         </div>
       </div>
 
@@ -1099,16 +1115,16 @@ function handleKeydown(e: KeyboardEvent) {
           />
         </div>
 
-        <!-- 普通文本编辑器 -->
-        <textarea
+        <!-- Tiptap 富文本编辑器（替代原普通文本 textarea） -->
+        <tiptap-editor
           v-else
-          ref="textareaRef"
+          ref="tiptapRef"
           v-model="draftContent"
           :placeholder="t('notes.contentPlaceholderPlain')"
-          class="min-h-0 w-full flex-1 resize-none border-0 bg-transparent p-4 text-sm leading-7 text-slate-800 outline-none placeholder:text-slate-400 sm:p-6 dark:text-slate-200 dark:placeholder:text-slate-600"
           @input="handleEditorInput"
-          @paste="handlePaste"
-          @keydown="handleKeydown"
+          @upload-image-request="fileInputRef?.click()"
+          @drop-files="uploadImageFiles"
+          @paste-files="uploadImageFiles"
         />
 
         <!-- 当前笔记关联的 R2 图片附件条 -->

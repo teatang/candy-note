@@ -67,7 +67,12 @@ async function handleTogglePin(e: Event, note: Note) {
 }
 
 function extractPreview(content: string): string {
-  return content.replace(/[#>*`!\[\]()]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 72)
+  return content
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#>*`!\[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 72)
 }
 
 function onDragStart(e: DragEvent, note: Note) {
