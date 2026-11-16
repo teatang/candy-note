@@ -236,10 +236,10 @@ async function onDrop(e: DragEvent, target: Note) {
               : 'border-slate-100 bg-slate-50/60 hover:border-slate-200 dark:border-slate-800 dark:bg-slate-800/40 dark:hover:border-slate-700',
             draggingNoteId === note.id ? 'opacity-45' : '',
             dragOverNoteId === note.id && dragPosition === 'before'
-              ? 'border-t-2 border-t-rose-500'
+              ? 'border-t-2 border-t-rose-500 dark:border-t-rose-400 dark:bg-rose-500/15 dark:shadow-[0_-2px_12px_rgba(251,113,133,0.35)]'
               : '',
             dragOverNoteId === note.id && dragPosition === 'after'
-              ? 'border-b-2 border-b-rose-500'
+              ? 'border-b-2 border-b-rose-500 dark:border-b-rose-400 dark:bg-rose-500/15 dark:shadow-[0_2px_12px_rgba(251,113,133,0.35)]'
               : ''
           ]"
           @click="handleSelectNote(note.id)"
@@ -249,6 +249,25 @@ async function onDrop(e: DragEvent, target: Note) {
           @dragleave="dragOverNoteId = null"
           @drop="(e) => onDrop(e, note)"
         >
+          <!-- 拖动位置高亮指示条（高对比度 + 夜间发光霓虹效果） -->
+          <div
+            v-if="dragOverNoteId === note.id && dragPosition === 'before'"
+            data-testid="drag-indicator-before"
+            class="pointer-events-none absolute -top-[3px] -left-1 -right-1 z-30 flex items-center"
+          >
+            <div class="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shadow-sm dark:bg-rose-400 dark:ring-slate-900 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+            <div class="h-[2px] flex-1 rounded-full bg-rose-500 shadow-sm dark:bg-rose-400 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+            <div class="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shadow-sm dark:bg-rose-400 dark:ring-slate-900 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+          </div>
+          <div
+            v-if="dragOverNoteId === note.id && dragPosition === 'after'"
+            data-testid="drag-indicator-after"
+            class="pointer-events-none absolute -bottom-[3px] -left-1 -right-1 z-30 flex items-center"
+          >
+            <div class="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shadow-sm dark:bg-rose-400 dark:ring-slate-900 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+            <div class="h-[2px] flex-1 rounded-full bg-rose-500 shadow-sm dark:bg-rose-400 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+            <div class="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shadow-sm dark:bg-rose-400 dark:ring-slate-900 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+          </div>
           <div class="flex items-start justify-between gap-2">
             <div class="flex min-w-0 items-center gap-1.5">
               <el-icon class="shrink-0 cursor-grab text-slate-300 group-hover:text-slate-400">
@@ -307,10 +326,10 @@ async function onDrop(e: DragEvent, target: Note) {
               : 'border-slate-100 bg-white hover:border-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700',
             draggingNoteId === note.id ? 'opacity-45' : '',
             dragOverNoteId === note.id && dragPosition === 'before'
-              ? 'border-t-2 border-t-rose-500'
+              ? 'border-t-2 border-t-rose-500 dark:border-t-rose-400 dark:bg-rose-500/15 dark:shadow-[0_-2px_12px_rgba(251,113,133,0.35)]'
               : '',
             dragOverNoteId === note.id && dragPosition === 'after'
-              ? 'border-b-2 border-b-rose-500'
+              ? 'border-b-2 border-b-rose-500 dark:border-b-rose-400 dark:bg-rose-500/15 dark:shadow-[0_2px_12px_rgba(251,113,133,0.35)]'
               : ''
           ]"
           @click="handleSelectNote(note.id)"
@@ -320,6 +339,25 @@ async function onDrop(e: DragEvent, target: Note) {
           @dragleave="dragOverNoteId = null"
           @drop="(e) => onDrop(e, note)"
         >
+          <!-- 拖动位置高亮指示条（高对比度 + 夜间发光霓虹效果） -->
+          <div
+            v-if="dragOverNoteId === note.id && dragPosition === 'before'"
+            data-testid="drag-indicator-before"
+            class="pointer-events-none absolute -top-[3px] -left-1 -right-1 z-30 flex items-center"
+          >
+            <div class="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shadow-sm dark:bg-rose-400 dark:ring-slate-900 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+            <div class="h-[2px] flex-1 rounded-full bg-rose-500 shadow-sm dark:bg-rose-400 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+            <div class="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shadow-sm dark:bg-rose-400 dark:ring-slate-900 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+          </div>
+          <div
+            v-if="dragOverNoteId === note.id && dragPosition === 'after'"
+            data-testid="drag-indicator-after"
+            class="pointer-events-none absolute -bottom-[3px] -left-1 -right-1 z-30 flex items-center"
+          >
+            <div class="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shadow-sm dark:bg-rose-400 dark:ring-slate-900 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+            <div class="h-[2px] flex-1 rounded-full bg-rose-500 shadow-sm dark:bg-rose-400 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+            <div class="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shadow-sm dark:bg-rose-400 dark:ring-slate-900 dark:shadow-[0_0_10px_rgba(251,113,133,1)]" />
+          </div>
           <div class="flex items-start justify-between gap-2">
             <div class="flex min-w-0 items-center gap-1.5">
               <el-icon class="shrink-0 cursor-grab text-slate-300 group-hover:text-slate-400">

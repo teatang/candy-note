@@ -289,10 +289,10 @@ async function handleFolderDrop(e: DragEvent, targetId: string | 'uncategorized'
             ? 'ring-2 ring-rose-400 bg-rose-50/70 dark:bg-rose-500/20'
             : '',
           dropTargetId === folder.id && dropPosition === 'before'
-            ? 'border-t-2 border-rose-500'
+            ? 'border-t-2 border-rose-500 dark:border-t-rose-400 dark:shadow-[0_-2px_8px_rgba(251,113,133,0.5)]'
             : '',
           dropTargetId === folder.id && dropPosition === 'after'
-            ? 'border-b-2 border-rose-500'
+            ? 'border-b-2 border-rose-500 dark:border-b-rose-400 dark:shadow-[0_2px_8px_rgba(251,113,133,0.5)]'
             : ''
         ]"
         @click="handleSelectFolder(folder.id)"

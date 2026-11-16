@@ -1411,4 +1411,95 @@ describe('Core Vue Components', () => {
 
     wrapper.unmount()
   })
+
+  it('NoteList 笔记列表在拖拽排序时应渲染高可见度的拖拽插入指示线', async () => {
+    const note1 = {
+      id: 'note-drag-1',
+      userId: 'u-1',
+      folderId: null,
+      title: '笔记 1',
+      content: '内容 1',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+    const note2 = {
+      id: 'note-drag-2',
+      userId: 'u-1',
+      folderId: null,
+      title: '笔记 2',
+      content: '内容 2',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 1,
+      createdAt: 200,
+      updatedAt: 200
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [note1, note2] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteList, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    const noteCards = wrapper.findAll('[draggable="true"]')
+    expect(noteCards.length).toBe(2)
+
+    // 模拟拖拽 note1 到 note2 上半部 (before)
+    await noteCards[0].trigger('dragstart', {
+      dataTransfer: {
+        setData: vi.fn(),
+        effectAllowed: 'move'
+      }
+    })
+
+    const targetEl = noteCards[1].element as HTMLElement
+    vi.spyOn(targetEl, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      bottom: 200,
+      height: 100,
+      left: 0,
+      right: 200,
+      width: 200,
+      x: 0,
+      y: 100,
+      toJSON: () => {}
+    })
+
+    await noteCards[1].trigger('dragover', {
+      clientY: 120, // 距离 top 20 < 50 => 'before'
+      dataTransfer: {
+        types: ['application/x-candy-note-id']
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="drag-indicator-before"]').exists()).toBe(true)
+
+    // 模拟移动到下半部 (after)
+    await noteCards[1].trigger('dragover', {
+      clientY: 180, // 距离 top 80 > 50 => 'after'
+      dataTransfer: {
+        types: ['application/x-candy-note-id']
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="drag-indicator-after"]').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
 })
