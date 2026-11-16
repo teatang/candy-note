@@ -1650,9 +1650,10 @@ describe('Core Vue Components', () => {
     pwdInput.dispatchEvent(new Event('input'))
     await flushPromises()
 
-    // 点击保存
+    // 点击“保存并分享”（按钮文案已升级为“保存并分享”）
     const saveBtn = document.body.querySelector('[data-testid="save-share-btn"]') as HTMLElement
     expect(saveBtn).not.toBeNull()
+    expect(saveBtn.textContent).toContain('保存并分享')
     saveBtn.click()
     await flushPromises()
 
@@ -1671,6 +1672,14 @@ describe('Core Vue Components', () => {
       document.body.querySelector('[data-testid="share-url-input"]')) as HTMLInputElement
     expect(shareUrlInput).not.toBeNull()
     expect(shareUrlInput.value).toContain('?password=secret123')
+
+    // “复制链接与密码”按钮已移除
+    expect(document.body.querySelector('[data-testid="copy-link-and-pwd-btn"]')).toBeNull()
+
+    // 底部“删除”按钮已升级为“删除分享”
+    const disableBtn = document.body.querySelector('[data-testid="disable-share-btn"]') as HTMLElement
+    expect(disableBtn).not.toBeNull()
+    expect(disableBtn.textContent).toContain('删除分享')
 
     wrapper.unmount()
   })

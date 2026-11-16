@@ -219,15 +219,6 @@ function handleCopyLink() {
   copyText(shareUrl.value, t('shares.copiedLinkMsg'))
 }
 
-function handleCopyLinkAndPwd() {
-  if (!shareUrl.value) return
-  const pwdText = password.value.trim()
-  const content = pwdText
-    ? `${shareUrl.value} (${t('shares.passwordLabel')}: ${pwdText})`
-    : shareUrl.value
-  copyText(content, t('shares.copiedLinkAndPwdMsg'))
-}
-
 function handleOpenPreview() {
   if (shareUrl.value) {
     window.open(shareUrl.value, '_blank')
@@ -427,24 +418,13 @@ function handleClose() {
             </el-button>
           </div>
 
-          <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-400">
-            <div>
-              <template v-if="share.expiresAt">
-                {{ t('shares.expiresAtText', { time: formatDateTime(share.expiresAt) }) }}
-              </template>
-              <template v-else>
-                {{ t('shares.neverExpires') }}
-              </template>
-            </div>
-            <button
-              v-if="hasPassword && password"
-              type="button"
-              data-testid="copy-link-and-pwd-btn"
-              class="text-rose-500 hover:underline"
-              @click="handleCopyLinkAndPwd"
-            >
-              {{ t('shares.copyLinkAndPwdBtn') }}
-            </button>
+          <div class="pt-1 text-[11px] text-slate-400">
+            <template v-if="share.expiresAt">
+              {{ t('shares.expiresAtText', { time: formatDateTime(share.expiresAt) }) }}
+            </template>
+            <template v-else>
+              {{ t('shares.neverExpires') }}
+            </template>
           </div>
         </div>
       </div>
@@ -462,7 +442,7 @@ function handleClose() {
             data-testid="disable-share-btn"
             @click="handleDisableShare"
           >
-            {{ t('common.delete') }}
+            {{ t('shares.deleteShareBtn') }}
           </el-button>
         </div>
         <div class="flex items-center gap-2">
@@ -477,7 +457,7 @@ function handleClose() {
             @click="handleSave"
           >
             <el-icon class="mr-1"><Check /></el-icon>
-            <span>{{ t('common.save') }}</span>
+            <span>{{ t('shares.saveAndShareBtn') }}</span>
           </el-button>
         </div>
       </div>
