@@ -1304,4 +1304,62 @@ describe('Core Vue Components', () => {
 
     wrapper.unmount()
   })
+
+  it('无论 Markdown 笔记还是普通文本笔记，即使存在附件数据，编辑器底部均不渲染“笔记 R2 图片附件”一栏', async () => {
+    const markdownNote = {
+      id: 'note-attachments-test-1',
+      userId: 'u-1',
+      folderId: null,
+      title: '附件栏移除测试',
+      content: '# 标题\n\n![图片](/api/files/test.png)',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    const mockAttachments = [
+      {
+        id: 'att-1',
+        noteId: 'note-attachments-test-1',
+        userId: 'u-1',
+        filename: 'test.png',
+        key: 'users/u-1/test.png',
+        url: '/api/files/test.png',
+        size: 1024,
+        mimeType: 'image/png',
+        createdAt: 100
+      }
+    ]
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [markdownNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: mockAttachments })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    // 验证 store 中即使有附件数据，编辑器中也不渲染 R2 附件列表条
+    expect(noteStore.attachments.length).toBe(1)
+    expect(wrapper.text()).not.toContain('笔记 R2 图片附件')
+    expect(wrapper.text()).not.toContain('R2 Image Attachments')
+
+    // 切换为 plain 格式也同样不渲染
+    noteStore.activeNote!.format = 'plain'
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('笔记 R2 图片附件')
+    expect(wrapper.text()).not.toContain('R2 Image Attachments')
+
+    wrapper.unmount()
+  })
 })

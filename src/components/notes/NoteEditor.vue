@@ -19,7 +19,6 @@ import { resolveApiErrorMessage } from '@/api/client'
 import { useLayoutStore } from '@/stores/layout'
 import { NoteConflictError, useNoteStore } from '@/stores/note'
 import type { MarkdownViewMode, Note, NoteFormat } from '@/types'
-import { formatBytes } from '@/utils/date'
 import { renderMarkdownSafe } from '@/utils/markdown'
 import NoteConflictDialog, { type NoteConflictPayload } from './NoteConflictDialog.vue'
 import TiptapEditor from './TiptapEditor.vue'
@@ -685,22 +684,6 @@ function handlePaste(e: ClipboardEvent) {
   }
 }
 
-async function handleDeleteAttachment(id: string) {
-  try {
-    await ElMessageBox.confirm(t('notes.deleteAttachmentConfirm'), t('common.delete'), {
-      type: 'warning',
-      confirmButtonText: t('common.delete'),
-      cancelButtonText: t('common.cancel')
-    })
-    await noteStore.deleteAttachment(id)
-    ElMessage.success(t('common.success'))
-  } catch (err) {
-    if (err !== 'cancel' && err !== 'close') {
-      ElMessage.error(resolveApiErrorMessage(err))
-    }
-  }
-}
-
 function handleKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
     e.preventDefault()
@@ -1130,42 +1113,6 @@ function handleKeydown(e: KeyboardEvent) {
           @drop-files="uploadImageFiles"
           @paste-files="uploadImageFiles"
         />
-
-        <!-- 当前笔记关联的 R2 图片附件条 -->
-        <div
-          v-if="noteStore.attachments.length > 0"
-          class="border-t border-slate-200/80 bg-slate-50/70 px-3 py-2 sm:px-5 sm:py-2.5 dark:border-slate-800 dark:bg-slate-900/70"
-        >
-          <div class="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {{ t('notes.attachmentsTitle', { count: noteStore.attachments.length }) }}
-          </div>
-          <div class="flex gap-2.5 overflow-x-auto pb-1">
-            <div
-              v-for="att in noteStore.attachments"
-              :key="att.id"
-              class="group relative flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 pr-7 shadow-2xs dark:border-slate-700 dark:bg-slate-800"
-            >
-              <img
-                :src="att.url"
-                :alt="att.filename"
-                class="h-10 w-10 rounded-lg object-cover"
-              />
-              <div class="max-w-32 text-[11px]">
-                <div class="truncate font-medium text-slate-700 dark:text-slate-200">
-                  {{ att.filename }}
-                </div>
-                <div class="text-slate-400">{{ formatBytes(att.size) }}</div>
-              </div>
-              <button
-                type="button"
-                class="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/20"
-                @click="handleDeleteAttachment(att.id)"
-              >
-                <el-icon :size="11"><Delete /></el-icon>
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- 一周内历史版本回退抽屉 -->
