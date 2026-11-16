@@ -38,8 +38,8 @@ const loading = ref(false)
 const submitting = ref(false)
 const share = ref<NoteShare | null>(null)
 
-// 表单响应状态
-const isEnabled = ref(false)
+// 表单响应状态（“开启公开分享”默认打开且不可关闭）
+const isEnabled = ref(true)
 const duration = ref<ShareDurationType>('permanent')
 const hasPassword = ref(false)
 const password = ref('')
@@ -106,8 +106,8 @@ async function fetchShareConfig() {
   try {
     const res = await notesApi.getShare(props.note.id)
     share.value = res.share
+    isEnabled.value = true
     if (res.share) {
-      isEnabled.value = res.share.isEnabled
       hasPassword.value = res.share.hasPassword
       if (!res.share.expiresAt) {
         duration.value = 'permanent'
@@ -116,7 +116,6 @@ async function fetchShareConfig() {
       }
       password.value = res.share.sharePassword || ''
     } else {
-      isEnabled.value = false
       hasPassword.value = false
       duration.value = 'permanent'
       password.value = ''
@@ -180,11 +179,12 @@ async function handleDisableShare() {
     submitting.value = true
     await notesApi.deleteShare(props.note.id)
     share.value = null
-    isEnabled.value = false
+    isEnabled.value = true
     hasPassword.value = false
     password.value = ''
     ElMessage.success(t('shares.deleteShareSuccess'))
     emit('share-updated', null)
+    handleClose()
   } catch (err) {
     if (err !== 'cancel' && err !== 'close') {
       ElMessage.error(resolveApiErrorMessage(err))
@@ -265,11 +265,10 @@ function handleClose() {
     </template>
 
     <div v-loading="loading" class="py-2 space-y-4">
-      <!-- 开启分享总开关 -->
+      <!-- 开启分享总开关（默认开启且不可关闭） -->
       <div
-        class="flex items-center justify-between rounded-xl bg-slate-50 p-3.5 dark:bg-slate-900/60 cursor-pointer select-none"
+        class="flex items-center justify-between rounded-xl bg-slate-50 p-3.5 dark:bg-slate-900/60 cursor-default select-none"
         data-testid="share-enabled-card"
-        @click="isEnabled = !isEnabled"
       >
         <div class="space-y-0.5">
           <div class="text-xs font-medium text-slate-800 dark:text-slate-200">
@@ -280,10 +279,10 @@ function handleClose() {
           </div>
         </div>
         <el-switch
-          :model-value="isEnabled"
+          :model-value="true"
+          disabled
           active-color="#f43f5e"
           data-testid="share-enabled-switch"
-          @click.stop="isEnabled = !isEnabled"
         />
       </div>
 

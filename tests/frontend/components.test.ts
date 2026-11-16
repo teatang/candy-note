@@ -1612,11 +1612,17 @@ describe('Core Vue Components', () => {
     await flushPromises()
     expect(getShareSpy).toHaveBeenCalledWith(testNote.id)
 
-    // 开启分享开关
+    // “开启公开分享”选项默认打开且不可关闭
     const enableCard = document.body.querySelector('[data-testid="share-enabled-card"]') as HTMLElement
     expect(enableCard).not.toBeNull()
+    const enableSwitch = document.body.querySelector('[data-testid="share-enabled-switch"]') as HTMLElement
+    expect(enableSwitch).not.toBeNull()
+    expect(enableSwitch.classList.contains('is-disabled')).toBe(true)
+
+    // 点击该选项卡片不会关闭分享配置
     enableCard.click()
     await flushPromises()
+    expect(document.body.querySelector('[data-testid="duration-1d"]')).not.toBeNull()
 
     // 切换为 1天 有效期
     const dayBtn = document.body.querySelector('[data-testid="duration-1d"]') as HTMLElement
