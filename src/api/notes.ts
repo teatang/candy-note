@@ -1,7 +1,14 @@
-import type { Note, NoteFormat, NoteVersion } from '@/types'
+import type {
+  Note,
+  NoteFormat,
+  NoteVersion,
+  NoteShare,
+  SaveNoteSharePayload,
+  PublicSharedNote
+} from '@/types'
 import { apiRequest } from './client'
 
-/** 笔记与一周历史版本接口封装 */
+/** 笔记与一周历史版本、分享接口封装 */
 export const notesApi = {
   list(params: { folderId?: string; q?: string; format?: string } = {}) {
     const sp = new URLSearchParams()
@@ -78,5 +85,54 @@ export const notesApi = {
       `/api/notes/${noteId}/versions/${versionId}/rollback`,
       { method: 'POST' }
     )
+  },
+
+  /** 获取指定笔记的分享配置 */
+  getShare(noteId: string) {
+    return apiRequest<{ share: NoteShare | null }>(`/api/notes/${noteId}/share`)
+  },
+
+  /** 创建或更新笔记分享配置 */
+  saveShare(noteId: string, payload: SaveNoteSharePayload) {
+    return apiRequest<{ share: NoteShare }>(`/api/notes/${noteId}/share`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    })
+  },
+
+  /** 删除/取消笔记分享 */
+  deleteShare(noteId: string) {
+    return apiRequest<{ ok: true }>(`/api/notes/${noteId}/share`, {
+      method: 'DELETE'
+    })
   }
 }
+
+/** 外部公开免登录访问笔记接口封装 */
+export const publicShareApi = {
+  get(shareCode: string, password?: string) {
+    const qs = password ? `?password=${encodeURIComponent(password)}` : ''
+    return apiRequest<{
+      ok: boolean
+      requirePassword?: boolean
+      note?: PublicSharedNote
+      share?: PublicSharedNote
+    }>(`/api/share/${shareCode}${qs}`, {
+      skipUnauthorizedCallback: true
+    })
+  },
+
+  access(shareCode: string, password: string) {
+    return apiRequest<{
+      ok: boolean
+      requirePassword?: boolean
+      note?: PublicSharedNote
+      share?: PublicSharedNote
+    }>(`/api/share/${shareCode}/access`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+      skipUnauthorizedCallback: true
+    })
+  }
+}
+

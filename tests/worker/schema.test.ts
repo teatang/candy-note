@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { cleanupExpiredData } from '@worker/db/repository'
 import { isNoSuchTableError, SCHEMA_STATEMENTS } from '@worker/db/schema'
@@ -81,6 +81,7 @@ describe('Database Auto-Bootstrap Schema', () => {
           'attachments',
           'captchas',
           'folders',
+          'note_shares',
           'note_versions',
           'notes',
           'sessions',
@@ -94,13 +95,19 @@ describe('Database Auto-Bootstrap Schema', () => {
     }
   })
 
-  it('isNoSuchTableError 应准确识别 D1_ERROR 包装异常，且内嵌建表语句应覆盖 0001_init.sql 全部表和索引', () => {
+  it('isNoSuchTableError 应准确识别 D1_ERROR 包装异常，且内嵌建表语句应覆盖全部 migrations 表和索引', () => {
     const cause = new Error('no such table: users: SQLITE_ERROR')
     const wrapped = new Error('D1_ERROR: no such table: users: SQLITE_ERROR', { cause })
     expect(isNoSuchTableError(wrapped)).toBe(true)
     expect(isNoSuchTableError(new Error('UNIQUE constraint failed'))).toBe(false)
 
-    const migrationSql = readFileSync(resolve(process.cwd(), 'migrations/0001_init.sql'), 'utf8')
+    const migrationsDir = resolve(process.cwd(), 'migrations')
+    const migrationFiles = readdirSync(migrationsDir)
+      .filter((f) => f.endsWith('.sql'))
+      .sort()
+    const migrationSql = migrationFiles
+      .map((f) => readFileSync(resolve(migrationsDir, f), 'utf8'))
+      .join('\n')
     const expectedTables = Array.from(
       migrationSql.matchAll(/CREATE TABLE IF NOT EXISTS\s+([a-z0-9_]+)/gi)
     ).map((m) => m[1])

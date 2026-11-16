@@ -25,7 +25,7 @@ onMounted(() => {
   onUnauthorized(() => {
     authStore.clearLocalAuth()
     noteStore.reset()
-    if (router.currentRoute.value.name !== 'login') {
+    if (router.currentRoute.value.name !== 'login' && router.currentRoute.value.name !== 'share') {
       router.replace({ name: 'login' })
     }
   })

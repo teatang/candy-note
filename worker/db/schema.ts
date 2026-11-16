@@ -101,7 +101,26 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_attachments_user ON attachments(user_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_attachments_note ON attachments(note_id)`
+  `CREATE INDEX IF NOT EXISTS idx_attachments_note ON attachments(note_id)`,
+
+  // 8. 笔记分享附属表：控制笔记公开/密码访问与有效期
+  `CREATE TABLE IF NOT EXISTS note_shares (
+    id TEXT PRIMARY KEY,
+    note_id TEXT NOT NULL UNIQUE REFERENCES notes(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    share_code TEXT NOT NULL UNIQUE,
+    is_enabled INTEGER NOT NULL DEFAULT 1,
+    has_password INTEGER NOT NULL DEFAULT 0,
+    password_hash TEXT,
+    expires_at INTEGER,
+    view_count INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_note_shares_note ON note_shares(note_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_note_shares_user ON note_shares(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_note_shares_code ON note_shares(share_code)`,
+  `CREATE INDEX IF NOT EXISTS idx_note_shares_expires ON note_shares(expires_at)`
 ]
 
 /** 记录同一 Worker Isolate 内正在进行的建表任务，合并并发冷启动请求 */

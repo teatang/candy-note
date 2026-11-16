@@ -3,6 +3,8 @@ import type {
   FolderRow,
   NoteFormat,
   NoteRow,
+  NoteShareDto,
+  NoteShareRow,
   NoteVersionRow,
   SafeUser,
   UserRole,
@@ -79,6 +81,23 @@ export function toNoteVersionDto(row: NoteVersionRow) {
     versionNumber: row.version_number,
     changeType: row.change_type,
     createdAt: row.created_at
+  }
+}
+
+/**
+ * 将数据库笔记分享配置行转换为前端 camelCase 对象
+ */
+export function toNoteShareDto(row: NoteShareRow): NoteShareDto {
+  return {
+    id: row.id,
+    noteId: row.note_id,
+    shareCode: row.share_code,
+    isEnabled: row.is_enabled === 1,
+    hasPassword: row.has_password === 1,
+    expiresAt: row.expires_at,
+    viewCount: row.view_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   }
 }
 

@@ -27,6 +27,12 @@ export function createAppRouter() {
         meta: { requiresAuth: true, requiresAdmin: true }
       },
       {
+        path: '/share/:shareCode',
+        name: 'share',
+        component: () => import('@/views/ShareView.vue'),
+        meta: { public: true }
+      },
+      {
         path: '/:pathMatch(.*)*',
         redirect: '/'
       }

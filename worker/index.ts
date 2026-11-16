@@ -5,6 +5,7 @@ import { authRoutes } from './routes/auth'
 import { fileRoutes } from './routes/files'
 import { folderRoutes } from './routes/folders'
 import { noteRoutes } from './routes/notes'
+import { publicShareRoutes } from './routes/publicShare'
 import type { AppEnv, Env } from './types'
 import { apiError } from './types'
 
@@ -32,6 +33,7 @@ export function createApp() {
   app.route('/api/notes', noteRoutes)
   app.route('/api/files', fileRoutes)
   app.route('/api/admin', adminRoutes)
+  app.route('/api/share', publicShareRoutes)
 
   // 未匹配的 /api/* 请求返回 JSON 404
   app.all('/api/*', (c) => {

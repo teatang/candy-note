@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 
@@ -86,11 +86,14 @@ export class MockD1Database {
     this.sqlite = new DatabaseSync(':memory:')
     this.sqlite.exec('PRAGMA foreign_keys = ON;')
     if (!options.skipMigration) {
-      const migrationSql = readFileSync(
-        resolve(process.cwd(), 'migrations/0001_init.sql'),
-        'utf-8'
-      )
-      this.sqlite.exec(migrationSql)
+      const migrationsDir = resolve(process.cwd(), 'migrations')
+      const files = readdirSync(migrationsDir)
+        .filter((f) => f.endsWith('.sql'))
+        .sort()
+      for (const file of files) {
+        const migrationSql = readFileSync(resolve(migrationsDir, file), 'utf-8')
+        this.sqlite.exec(migrationSql)
+      }
     }
   }
 

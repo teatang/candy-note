@@ -8,6 +8,7 @@ import {
   FullScreen,
   Picture,
   ScaleToOriginal,
+  Share,
   Top,
   Upload,
   WarningFilled
@@ -15,12 +16,14 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { notesApi } from '@/api/notes'
 import { resolveApiErrorMessage } from '@/api/client'
 import { useLayoutStore } from '@/stores/layout'
 import { NoteConflictError, useNoteStore } from '@/stores/note'
 import type { MarkdownViewMode, Note, NoteFormat } from '@/types'
 import { renderMarkdownSafe } from '@/utils/markdown'
 import NoteConflictDialog, { type NoteConflictPayload } from './NoteConflictDialog.vue'
+import NoteShareDialog from './NoteShareDialog.vue'
 import TiptapEditor from './TiptapEditor.vue'
 import VersionHistoryDrawer from './VersionHistoryDrawer.vue'
 
@@ -47,6 +50,8 @@ const viewMode = computed<MarkdownViewMode>({
 })
 const isDraggingFile = ref(false)
 const historyOpen = ref(false)
+const shareDialogOpen = ref(false)
+const hasActiveShare = ref(false)
 const conflictDialogOpen = ref(false)
 const conflictState = ref<NoteConflictPayload | null>(null)
 const resolvingConflict = ref(false)
@@ -104,6 +109,7 @@ watch(
       }
       currentLoadedNoteId.value = null
       hasPendingChanges = false
+      hasActiveShare.value = false
       draftTitle.value = ''
       draftContent.value = ''
       conflictState.value = null
@@ -132,6 +138,21 @@ watch(
       draftContent.value = note.content
       draftFormat.value = note.format
       draftFolderId.value = note.folderId
+
+      // 异步查询当前笔记的公开分享状态
+      notesApi
+        .getShare(note.id)
+        .then((res) => {
+          hasActiveShare.value = !!(
+            res.share &&
+            res.share.isEnabled &&
+            (!res.share.expiresAt || res.share.expiresAt > Date.now())
+          )
+        })
+        .catch(() => {
+          hasActiveShare.value = false
+        })
+
       setTimeout(() => {
         syncingFromStore = false
       }, 0)
@@ -865,6 +886,29 @@ function handleKeydown(e: KeyboardEvent) {
             <span class="hidden lg:inline">{{ t('versions.title') }}</span>
           </el-button>
 
+          <!-- 分享笔记按钮 -->
+          <el-tooltip :content="t('notes.shareBtn')" placement="top">
+            <el-button
+              data-testid="share-note-btn"
+              size="small"
+              :type="hasActiveShare ? 'primary' : 'default'"
+              plain
+              class="relative !m-0 !rounded-lg"
+              :aria-label="t('notes.shareBtn')"
+              @click="shareDialogOpen = true"
+            >
+              <el-icon class="lg:mr-1"><Share /></el-icon>
+              <span class="hidden lg:inline">{{ t('shares.dialogTitle') }}</span>
+              <span
+                v-if="hasActiveShare"
+                class="absolute -right-0.5 -top-0.5 flex h-2 w-2"
+              >
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75"></span>
+                <span class="relative inline-flex h-2 w-2 rounded-full bg-rose-500"></span>
+              </span>
+            </el-button>
+          </el-tooltip>
+
           <!-- 全屏编辑/查看切换按钮（Markdown 与普通文本模式均支持） -->
           <el-tooltip
             :content="
@@ -1142,6 +1186,19 @@ function handleKeydown(e: KeyboardEvent) {
         @confirm-overwrite="handleConfirmConflictOverwrite"
         @use-server="handleUseServerVersion"
         @cancel="handleCancelConflictDialog"
+      />
+
+      <!-- 笔记公开分享配置弹窗 -->
+      <NoteShareDialog
+        v-model="shareDialogOpen"
+        :note="noteStore.activeNote"
+        @share-updated="(share) => {
+          hasActiveShare = !!(
+            share &&
+            share.isEnabled &&
+            (!share.expiresAt || share.expiresAt > Date.now())
+          )
+        }"
       />
     </template>
   </main>

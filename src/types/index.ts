@@ -130,3 +130,45 @@ export interface AdminStats {
   recentLogins: User[]
   userSummaries: AdminUserSummary[]
 }
+
+/** 分享有效期选项 */
+export type ShareDurationType = 'permanent' | '1h' | '1d' | '7d' | '30d' | 'custom'
+
+/** 笔记分享配置信息 */
+export interface NoteShare {
+  id: string
+  noteId: string
+  userId: string
+  shareCode: string
+  isEnabled: boolean
+  hasPassword: boolean
+  expiresAt: number | null
+  viewCount: number
+  createdAt: number
+  updatedAt: number
+  shareUrl?: string
+}
+
+/** 保存笔记分享配置的请求参数 */
+export interface SaveNoteSharePayload {
+  isEnabled?: boolean
+  duration?: ShareDurationType
+  customExpiresAt?: number | null
+  hasPassword?: boolean
+  password?: string
+}
+
+/** 公开外部访问笔记数据模型 */
+export interface PublicSharedNote {
+  shareCode: string
+  title: string
+  format?: NoteFormat
+  content?: string
+  authorName: string
+  requirePassword?: boolean
+  expiresAt: number | null
+  createdAt: number
+  updatedAt?: number
+  viewCount: number
+}
+

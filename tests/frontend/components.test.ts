@@ -7,18 +7,20 @@ import { adminApi } from '@/api/admin'
 import { authApi } from '@/api/auth'
 import { filesApi } from '@/api/files'
 import { foldersApi } from '@/api/folders'
-import { notesApi } from '@/api/notes'
+import { notesApi, publicShareApi } from '@/api/notes'
 import { ApiRequestError } from '@/api/client'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import FolderSidebar from '@/components/notes/FolderSidebar.vue'
 import NoteEditor from '@/components/notes/NoteEditor.vue'
 import NoteList from '@/components/notes/NoteList.vue'
+import NoteShareDialog from '@/components/notes/NoteShareDialog.vue'
 import { i18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
 import { useNoteStore } from '@/stores/note'
 import AdminView from '@/views/AdminView.vue'
 import LoginView from '@/views/LoginView.vue'
+import ShareView from '@/views/ShareView.vue'
 
 /**
  * 核心 UI 组件集成测试
@@ -1500,6 +1502,264 @@ describe('Core Vue Components', () => {
 
     expect(wrapper.find('[data-testid="drag-indicator-after"]').exists()).toBe(true)
 
+    wrapper.unmount()
+  })
+
+  it('NoteEditor 应在顶部工具栏渲染分享按钮，并在点击时弹出分享配置对话框', async () => {
+    const testNote = {
+      id: 'note-share-test',
+      userId: 'u-1',
+      folderId: null,
+      title: '公开分享测试笔记',
+      content: '# 欢迎阅读公开分享内容',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 1000,
+      updatedAt: 1000
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [testNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+    vi.spyOn(notesApi, 'getShare').mockResolvedValue({
+      share: {
+        id: 'share-1',
+        noteId: testNote.id,
+        userId: 'u-1',
+        shareCode: 'abc123xyz0',
+        isEnabled: true,
+        hasPassword: false,
+        expiresAt: null,
+        viewCount: 5,
+        createdAt: 1000,
+        updatedAt: 1000,
+        shareUrl: 'http://localhost/share/abc123xyz0'
+      }
+    })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    const shareBtn = wrapper.find('[data-testid="share-note-btn"]')
+    expect(shareBtn.exists()).toBe(true)
+
+    // 点击分享按钮打开分享弹窗
+    await shareBtn.trigger('click')
+    await flushPromises()
+
+    const shareDialog = document.body.querySelector('.candy-share-dialog')
+    expect(shareDialog).not.toBeNull()
+
+    wrapper.unmount()
+  })
+
+  it('NoteShareDialog 应支持配置永久/自定义有效期、设置密码保护并保存，支持复制分享链接', async () => {
+    const testNote = {
+      id: 'note-dialog-test',
+      userId: 'u-1',
+      folderId: null,
+      title: '弹窗配置测试',
+      content: '正文',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 1000,
+      updatedAt: 1000
+    }
+
+    const getShareSpy = vi.spyOn(notesApi, 'getShare').mockResolvedValue({
+      share: null
+    })
+
+    const saveShareSpy = vi.spyOn(notesApi, 'saveShare').mockResolvedValue({
+      share: {
+        id: 's-new',
+        noteId: testNote.id,
+        userId: 'u-1',
+        shareCode: 'code789',
+        isEnabled: true,
+        hasPassword: true,
+        expiresAt: Date.now() + 86400000,
+        viewCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        shareUrl: 'http://localhost/share/code789'
+      }
+    })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(NoteShareDialog, {
+      props: {
+        modelValue: true,
+        note: testNote
+      },
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+    expect(getShareSpy).toHaveBeenCalledWith(testNote.id)
+
+    // 开启分享开关
+    const enableCard = document.body.querySelector('[data-testid="share-enabled-card"]') as HTMLElement
+    expect(enableCard).not.toBeNull()
+    enableCard.click()
+    await flushPromises()
+
+    // 切换为 1天 有效期
+    const dayBtn = document.body.querySelector('[data-testid="duration-1d"]') as HTMLElement
+    expect(dayBtn).not.toBeNull()
+    dayBtn.click()
+    await flushPromises()
+
+    // 开启密码保护并输入密码
+    const pwdHeader = document.body.querySelector('[data-testid="share-password-header"]') as HTMLElement
+    expect(pwdHeader).not.toBeNull()
+    pwdHeader.click()
+    await flushPromises()
+
+    const pwdInput = (document.body.querySelector('[data-testid="share-password-container"] input') ||
+      document.body.querySelector('.candy-share-dialog input[type="password"]')) as HTMLInputElement
+    expect(pwdInput).not.toBeNull()
+    pwdInput.value = 'secret123'
+    pwdInput.dispatchEvent(new Event('input'))
+    await flushPromises()
+
+    // 点击保存
+    const saveBtn = document.body.querySelector('[data-testid="save-share-btn"]') as HTMLElement
+    expect(saveBtn).not.toBeNull()
+    saveBtn.click()
+    await flushPromises()
+
+    expect(saveShareSpy).toHaveBeenCalledWith(
+      testNote.id,
+      expect.objectContaining({
+        isEnabled: true,
+        duration: '1d',
+        hasPassword: true,
+        password: 'secret123'
+      })
+    )
+
+    wrapper.unmount()
+  })
+
+  it('ShareView 公开外部访问页面应支持免密访问、支持密码解锁流程、并在过期或不存在时正确显示状态提示', async () => {
+    // 1. 免密公开分享页面测试
+    vi.spyOn(publicShareApi, 'get').mockResolvedValueOnce({
+      share: {
+        shareCode: 'public123',
+        title: '公开笔记标题',
+        format: 'markdown',
+        content: '# 公开正文\n\n- 条目一\n- 条目二',
+        authorName: 'alice',
+        requirePassword: false,
+        expiresAt: null,
+        createdAt: 1000,
+        viewCount: 12
+      }
+    })
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/share/:shareCode', name: 'share', component: ShareView },
+        { path: '/', name: 'workspace', component: { template: '<div />' } },
+        { path: '/login', name: 'login', component: { template: '<div />' } }
+      ]
+    })
+    await router.push('/share/public123')
+    await router.isReady()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    let wrapper = mount(ShareView, {
+      global: { plugins: [pinia, router, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="shared-note-article"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('公开笔记标题')
+    expect(wrapper.text()).toContain('alice')
+    expect(wrapper.find('.candy-markdown-body').exists()).toBe(true)
+    wrapper.unmount()
+
+    // 2. 密码保护的笔记访问与解锁测试
+    vi.spyOn(publicShareApi, 'get').mockResolvedValueOnce({
+      share: {
+        shareCode: 'pwd456',
+        title: '私密分享笔记',
+        authorName: 'bob',
+        requirePassword: true,
+        expiresAt: null,
+        createdAt: 2000,
+        viewCount: 3
+      }
+    })
+    const accessSpy = vi.spyOn(publicShareApi, 'access').mockResolvedValueOnce({
+      share: {
+        shareCode: 'pwd456',
+        title: '私密分享笔记',
+        format: 'plain',
+        content: '<p>已解锁富文本内容</p>',
+        authorName: 'bob',
+        requirePassword: false,
+        expiresAt: null,
+        createdAt: 2000,
+        viewCount: 4
+      }
+    })
+
+    await router.push('/share/pwd456')
+    await flushPromises()
+
+    wrapper = mount(ShareView, {
+      global: { plugins: [pinia, router, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    // 应展示密码输入框
+    expect(wrapper.find('[data-testid="share-password-box"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="shared-note-article"]').exists()).toBe(false)
+
+    // 输入密码并点击解锁
+    const pwdInput = wrapper.find('input[type="password"]')
+    expect(pwdInput.exists()).toBe(true)
+    await pwdInput.setValue('my-password')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(accessSpy).toHaveBeenCalledWith('pwd456', 'my-password')
+    expect(wrapper.find('[data-testid="shared-note-article"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('私密分享笔记')
+    wrapper.unmount()
+
+    // 3. 过期分享（410）状态测试
+    vi.spyOn(publicShareApi, 'get').mockRejectedValueOnce(
+      new ApiRequestError('SHARE_EXPIRED', '分享链接已到期失效', 410)
+    )
+    await router.push('/share/expired999')
+    await flushPromises()
+
+    wrapper = mount(ShareView, {
+      global: { plugins: [pinia, router, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="share-expired"]').exists()).toBe(true)
     wrapper.unmount()
   })
 })

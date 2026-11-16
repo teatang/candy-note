@@ -144,3 +144,16 @@ export function generateSessionToken(): string {
   }
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
+
+/**
+ * 生成 10 位 URL 安全的随机分享短码（过滤易混淆字符 0/O, 1/l/I）
+ */
+export function generateShareCode(length = 10): string {
+  const chars = '23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ'
+  const bytes = crypto.getRandomValues(new Uint8Array(length))
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    result += chars[bytes[i] % chars.length]
+  }
+  return result
+}

@@ -2,12 +2,13 @@ import { Hono } from 'hono'
 import {
   createNoteVersionSnapshot,
   toNoteDto,
+  toNoteShareDto,
   toNoteVersionDto
 } from '../db/repository'
 import { requireAuth } from '../middleware/auth'
-import type { AppEnv, AttachmentRow, NoteFormat, NoteRow, NoteVersionRow } from '../types'
+import type { AppEnv, AttachmentRow, NoteFormat, NoteRow, NoteShareRow, NoteVersionRow } from '../types'
 import { apiError } from '../types'
-import { generateId } from '../utils/crypto'
+import { generateId, generateShareCode, hashPassword } from '../utils/crypto'
 import { SEVEN_DAYS_MS } from '../utils/validation'
 
 /** 自动保存触发历史快照的最小间隔：30 秒（防止高频输入产生大量冗余版本） */
@@ -601,4 +602,200 @@ noteRoutes.post('/:id/versions/:versionId/rollback', async (c) => {
     note: toNoteDto(restoredNote),
     restoredFromVersionId: version.id
   })
+})
+
+/**
+ * GET /api/notes/:id/share
+ * 获取当前笔记的分享配置
+ */
+noteRoutes.get('/:id/share', async (c) => {
+  const user = c.get('user')
+  const noteId = c.req.param('id')
+
+  const note = await c.env.DB.prepare(
+    `SELECT id FROM notes WHERE id = ? AND user_id = ? LIMIT 1`
+  )
+    .bind(noteId, user.id)
+    .first<{ id: string }>()
+
+  if (!note) {
+    return apiError(c, 404, 'NOTE_NOT_FOUND', '笔记不存在')
+  }
+
+  const shareRow = await c.env.DB.prepare(
+    `SELECT * FROM note_shares WHERE note_id = ? AND user_id = ? LIMIT 1`
+  )
+    .bind(noteId, user.id)
+    .first<NoteShareRow>()
+
+  return c.json({
+    ok: true,
+    share: shareRow ? toNoteShareDto(shareRow) : null
+  })
+})
+
+/**
+ * POST /api/notes/:id/share
+ * 创建或更新笔记分享配置
+ * - 支持开启/关闭分享 (isEnabled)
+ * - 支持分享有效时长（永久分享、1h、1d、7d、30d 或自定义毫秒时间戳）
+ * - 支持设置/修改访问密码或设为公开免密
+ */
+noteRoutes.post('/:id/share', async (c) => {
+  const user = c.get('user')
+  const noteId = c.req.param('id')
+
+  const note = await c.env.DB.prepare(
+    `SELECT id FROM notes WHERE id = ? AND user_id = ? LIMIT 1`
+  )
+    .bind(noteId, user.id)
+    .first<{ id: string }>()
+
+  if (!note) {
+    return apiError(c, 404, 'NOTE_NOT_FOUND', '笔记不存在')
+  }
+
+  const body = await c.req
+    .json<{
+      isEnabled?: boolean
+      duration?: 'permanent' | '1h' | '1d' | '7d' | '30d' | 'custom'
+      expiresAt?: number | null
+      hasPassword?: boolean
+      password?: string
+    }>()
+    .catch(() => null)
+
+  const isEnabled = body?.isEnabled !== false
+  const now = Date.now()
+
+  // 1. 计算过期时间戳 (expiresAt)
+  let expiresAt: number | null = null
+  if (body?.duration === '1h') {
+    expiresAt = now + 60 * 60 * 1000
+  } else if (body?.duration === '1d') {
+    expiresAt = now + 24 * 60 * 60 * 1000
+  } else if (body?.duration === '7d') {
+    expiresAt = now + 7 * 24 * 60 * 60 * 1000
+  } else if (body?.duration === '30d') {
+    expiresAt = now + 30 * 24 * 60 * 60 * 1000
+  } else if (body?.duration === 'permanent' || body?.expiresAt === null) {
+    expiresAt = null
+  } else if (typeof body?.expiresAt === 'number' && body.expiresAt > now) {
+    expiresAt = Math.round(body.expiresAt)
+  }
+
+  // 2. 密码处理
+  const hasPassword = Boolean(body?.hasPassword)
+  const existingShare = await c.env.DB.prepare(
+    `SELECT * FROM note_shares WHERE note_id = ? AND user_id = ? LIMIT 1`
+  )
+    .bind(noteId, user.id)
+    .first<NoteShareRow>()
+
+  let passwordHash = existingShare?.password_hash ?? null
+  if (hasPassword) {
+    const rawPwd = (body?.password ?? '').trim()
+    if (rawPwd) {
+      if (rawPwd.length < 1 || rawPwd.length > 32) {
+        return apiError(c, 400, 'VALIDATION_ERROR', '访问密码长度需在 1-32 位之间')
+      }
+      passwordHash = await hashPassword(rawPwd)
+    } else if (!passwordHash) {
+      return apiError(c, 400, 'VALIDATION_ERROR', '开启密码访问时必须设置访问密码')
+    }
+  } else {
+    passwordHash = null
+  }
+
+  // 3. 写入或更新附属表 note_shares
+  if (existingShare) {
+    await c.env.DB.prepare(
+      `UPDATE note_shares
+       SET is_enabled = ?, has_password = ?, password_hash = ?, expires_at = ?, updated_at = ?
+       WHERE id = ? AND user_id = ?`
+    )
+      .bind(
+        isEnabled ? 1 : 0,
+        hasPassword ? 1 : 0,
+        passwordHash,
+        expiresAt,
+        now,
+        existingShare.id,
+        user.id
+      )
+      .run()
+
+    const updatedShare: NoteShareRow = {
+      ...existingShare,
+      is_enabled: isEnabled ? 1 : 0,
+      has_password: hasPassword ? 1 : 0,
+      password_hash: passwordHash,
+      expires_at: expiresAt,
+      updated_at: now
+    }
+
+    return c.json({
+      ok: true,
+      share: toNoteShareDto(updatedShare)
+    })
+  } else {
+    const id = generateId()
+    const shareCode = generateShareCode(10)
+    await c.env.DB.prepare(
+      `INSERT INTO note_shares (
+         id, note_id, user_id, share_code, is_enabled, has_password, password_hash,
+         expires_at, view_count, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+    )
+      .bind(
+        id,
+        noteId,
+        user.id,
+        shareCode,
+        isEnabled ? 1 : 0,
+        hasPassword ? 1 : 0,
+        passwordHash,
+        expiresAt,
+        now,
+        now
+      )
+      .run()
+
+    const newShare: NoteShareRow = {
+      id,
+      note_id: noteId,
+      user_id: user.id,
+      share_code: shareCode,
+      is_enabled: isEnabled ? 1 : 0,
+      has_password: hasPassword ? 1 : 0,
+      password_hash: passwordHash,
+      expires_at: expiresAt,
+      view_count: 0,
+      created_at: now,
+      updated_at: now
+    }
+
+    return c.json(
+      {
+        ok: true,
+        share: toNoteShareDto(newShare)
+      },
+      201
+    )
+  }
+})
+
+/**
+ * DELETE /api/notes/:id/share
+ * 取消/删除笔记分享
+ */
+noteRoutes.delete('/:id/share', async (c) => {
+  const user = c.get('user')
+  const noteId = c.req.param('id')
+
+  await c.env.DB.prepare(`DELETE FROM note_shares WHERE note_id = ? AND user_id = ?`)
+    .bind(noteId, user.id)
+    .run()
+
+  return c.json({ ok: true })
 })

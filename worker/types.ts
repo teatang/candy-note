@@ -121,6 +121,53 @@ export interface AttachmentRow {
   created_at: number
 }
 
+/** 数据库笔记分享配置原始行结构 */
+export interface NoteShareRow {
+  id: string
+  note_id: string
+  user_id: string
+  share_code: string
+  is_enabled: number
+  has_password: number
+  password_hash: string | null
+  expires_at: number | null
+  view_count: number
+  created_at: number
+  updated_at: number
+}
+
+/** 返回给笔记作者的前端分享配置 DTO */
+export interface NoteShareDto {
+  id: string
+  noteId: string
+  shareCode: string
+  isEnabled: boolean
+  hasPassword: boolean
+  expiresAt: number | null
+  viewCount: number
+  createdAt: number
+  updatedAt: number
+}
+
+/** 返回给外部公开访问者的分享笔记 DTO */
+export interface PublicNoteShareDto {
+  shareCode: string
+  title: string
+  content?: string
+  format?: NoteFormat
+  authorName: string
+  hasPassword?: boolean
+  requirePassword?: boolean
+  expiresAt: number | null
+  createdAt?: number
+  updatedAt: number
+  viewCount?: number
+  // 兼容别名字段
+  noteTitle?: string
+  noteContent?: string
+  noteFormat?: NoteFormat
+}
+
 /** Hono 应用上下文类型绑定 */
 export interface AppEnv {
   Bindings: Env
@@ -155,6 +202,11 @@ export type ApiErrorCode =
   | 'FILE_INVALID_TYPE'
   | 'FILE_TOO_LARGE'
   | 'FILE_NOT_FOUND'
+  | 'SHARE_NOT_FOUND'
+  | 'SHARE_DISABLED'
+  | 'SHARE_EXPIRED'
+  | 'SHARE_PASSWORD_REQUIRED'
+  | 'SHARE_INVALID_PASSWORD'
   | 'INTERNAL_ERROR'
 
 /**

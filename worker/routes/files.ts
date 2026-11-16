@@ -1,8 +1,8 @@
 import { Hono } from 'hono'
-import { requireAuth } from '../middleware/auth'
+import { extractSessionToken, requireAuth } from '../middleware/auth'
 import type { AppEnv, AttachmentRow } from '../types'
 import { apiError } from '../types'
-import { generateId } from '../utils/crypto'
+import { generateId, sha256Hex } from '../utils/crypto'
 import {
   ALLOWED_IMAGE_MIME_EXT,
   MAX_IMAGE_SIZE_BYTES,
@@ -15,13 +15,11 @@ import {
  */
 export const fileRoutes = new Hono<AppEnv>()
 
-fileRoutes.use('*', requireAuth)
-
 /**
  * POST /api/files/upload
  * 上传图片至 Cloudflare R2 并返回安全访问地址
  */
-fileRoutes.post('/upload', async (c) => {
+fileRoutes.post('/upload', requireAuth, async (c) => {
   const user = c.get('user')
   const formData = await c.req.formData().catch(() => null)
   if (!formData) {
@@ -115,7 +113,7 @@ fileRoutes.post('/upload', async (c) => {
  * GET /api/files/note/:noteId
  * 查询指定笔记下关联的 R2 图片附件列表（注册在 /:id 之前避免路由冲突）
  */
-fileRoutes.get('/note/:noteId', async (c) => {
+fileRoutes.get('/note/:noteId', requireAuth, async (c) => {
   const user = c.get('user')
   const noteId = c.req.param('noteId')
 
@@ -141,10 +139,11 @@ fileRoutes.get('/note/:noteId', async (c) => {
 
 /**
  * GET /api/files/:id
- * 从 Cloudflare R2 读取并返回图片二进制流（仅允许所属用户或管理员访问）
+ * 从 Cloudflare R2 读取并返回图片二进制流
+ * - 允许所属用户或系统管理员直接访问
+ * - 允许外部访客访问已开启有效分享的笔记内图片
  */
 fileRoutes.get('/:id', async (c) => {
-  const user = c.get('user')
   const fileId = c.req.param('id')
 
   const attachment = await c.env.DB.prepare(
@@ -157,8 +156,44 @@ fileRoutes.get('/:id', async (c) => {
     return apiError(c, 404, 'FILE_NOT_FOUND', '图片附件不存在')
   }
 
-  if (attachment.user_id !== user.id && user.role !== 'admin') {
-    return apiError(c, 403, 'AUTH_FORBIDDEN', '无权访问该图片资源')
+  // 1. 尝试从 Session 验证当前登录用户（若为所有者或管理员直接放行）
+  let isAuthorized = false
+  const token = extractSessionToken(c.req.raw)
+  if (token) {
+    const tokenHash = await sha256Hex(token)
+    const sessionUser = await c.env.DB.prepare(
+      `SELECT u.id, u.role FROM sessions s
+       INNER JOIN users u ON u.id = s.user_id
+       WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'active'
+       LIMIT 1`
+    )
+      .bind(tokenHash, Date.now())
+      .first<{ id: string; role: string }>()
+
+    if (sessionUser && (sessionUser.id === attachment.user_id || sessionUser.role === 'admin')) {
+      isAuthorized = true
+    }
+  }
+
+  // 2. 若非作者/管理员，检查关联笔记是否处于已启用的分享状态且未过期
+  if (!isAuthorized) {
+    const now = Date.now()
+    const activeShare = attachment.note_id
+      ? await c.env.DB.prepare(
+          `SELECT id FROM note_shares
+           WHERE note_id = ? AND is_enabled = 1 AND (expires_at IS NULL OR expires_at > ?)
+           LIMIT 1`
+        )
+          .bind(attachment.note_id, now)
+          .first<{ id: string }>()
+      : null
+
+    if (!activeShare) {
+      if (!token) {
+        return apiError(c, 401, 'AUTH_UNAUTHORIZED', '未登录或登录已过期')
+      }
+      return apiError(c, 403, 'AUTH_FORBIDDEN', '无权访问该图片资源')
+    }
   }
 
   const r2Object = await c.env.R2_BUCKET.get(attachment.r2_key)
@@ -170,7 +205,7 @@ fileRoutes.get('/:id', async (c) => {
   headers.set('Content-Type', attachment.mime_type)
   headers.set('Content-Length', String(attachment.size))
   headers.set('X-Content-Type-Options', 'nosniff')
-  headers.set('Cache-Control', 'private, max-age=86400')
+  headers.set('Cache-Control', 'public, max-age=86400')
 
   return new Response(r2Object.body, { status: 200, headers })
 })
@@ -179,7 +214,7 @@ fileRoutes.get('/:id', async (c) => {
  * DELETE /api/files/:id
  * 从 Cloudflare R2 和 D1 中删除指定图片附件
  */
-fileRoutes.delete('/:id', async (c) => {
+fileRoutes.delete('/:id', requireAuth, async (c) => {
   const user = c.get('user')
   const fileId = c.req.param('id')
 

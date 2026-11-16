@@ -53,6 +53,19 @@ export function renderMarkdownSafe(markdown: string): string {
   const rawHtml = markedParser.parse(markdown, { async: false }) as string
   return DOMPurify.sanitize(rawHtml, {
     USE_PROFILES: { html: true },
-    ADD_ATTR: ['target', 'rel']
+    ADD_ATTR: ['target', 'rel', 'style', 'width', 'height']
   })
 }
+
+/**
+ * 净化 HTML 字符串（用于富文本展示），过滤危险脚本与 XSS 注入并保留安全样式与排版
+ */
+export function sanitizeHtml(html: string): string {
+  if (!html) return ''
+  ensureExternalLinkHook()
+  return DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    ADD_ATTR: ['target', 'rel', 'style', 'width', 'height']
+  })
+}
+
