@@ -143,6 +143,7 @@ export interface NoteShare {
   isEnabled: boolean
   hasPassword: boolean
   sharePassword?: string | null
+  duration?: ShareDurationType | null
   expiresAt: number | null
   viewCount: number
   createdAt: number

@@ -137,6 +137,8 @@ export interface NoteShareRow {
   updated_at: number
 }
 
+export type ShareDurationType = 'permanent' | '1h' | '1d' | '7d' | '30d' | 'custom'
+
 /** 返回给笔记作者的前端分享配置 DTO */
 export interface NoteShareDto {
   id: string
@@ -145,6 +147,7 @@ export interface NoteShareDto {
   isEnabled: boolean
   hasPassword: boolean
   sharePassword?: string | null
+  duration?: ShareDurationType | null
   expiresAt: number | null
   viewCount: number
   createdAt: number

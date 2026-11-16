@@ -5,6 +5,7 @@ import type {
   NoteRow,
   NoteShareDto,
   NoteShareRow,
+  ShareDurationType,
   NoteVersionRow,
   SafeUser,
   UserRole,
@@ -85,6 +86,22 @@ export function toNoteVersionDto(row: NoteVersionRow) {
 }
 
 /**
+ * 根据过期时间戳与更新时间戳推算预设的有效时间类型
+ */
+export function inferShareDuration(
+  expiresAt: number | null,
+  updatedAt: number
+): ShareDurationType {
+  if (!expiresAt) return 'permanent'
+  const diff = expiresAt - updatedAt
+  if (Math.abs(diff - 60 * 60 * 1000) <= 60000) return '1h'
+  if (Math.abs(diff - 24 * 60 * 60 * 1000) <= 60000) return '1d'
+  if (Math.abs(diff - 7 * 24 * 60 * 60 * 1000) <= 60000) return '7d'
+  if (Math.abs(diff - 30 * 24 * 60 * 60 * 1000) <= 60000) return '30d'
+  return '7d'
+}
+
+/**
  * 将数据库笔记分享配置行转换为前端 camelCase 对象
  */
 export function toNoteShareDto(row: NoteShareRow): NoteShareDto {
@@ -95,6 +112,7 @@ export function toNoteShareDto(row: NoteShareRow): NoteShareDto {
     isEnabled: row.is_enabled === 1,
     hasPassword: row.has_password === 1,
     sharePassword: row.share_password ?? null,
+    duration: inferShareDuration(row.expires_at, row.updated_at),
     expiresAt: row.expires_at,
     viewCount: row.view_count,
     createdAt: row.created_at,

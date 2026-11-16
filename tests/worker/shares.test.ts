@@ -52,6 +52,7 @@ describe('Note Share API & Public External Access', () => {
           shareCode: string
           isEnabled: boolean
           hasPassword: boolean
+          duration?: string | null
           expiresAt: number | null
           viewCount: number
         }
@@ -59,6 +60,7 @@ describe('Note Share API & Public External Access', () => {
       expect(createBody.ok).toBe(true)
       expect(createBody.share.isEnabled).toBe(true)
       expect(createBody.share.hasPassword).toBe(false)
+      expect(createBody.share.duration).toBe('permanent')
       expect(createBody.share.expiresAt).toBeNull()
       const shareCode = createBody.share.shareCode
       expect(shareCode).toHaveLength(10)
@@ -131,10 +133,11 @@ describe('Note Share API & Public External Access', () => {
       )
       expect(setShareRes.status).toBe(201)
       const { share } = (await setShareRes.json()) as {
-        share: { shareCode: string; hasPassword: boolean; expiresAt: number; sharePassword?: string | null }
+        share: { shareCode: string; hasPassword: boolean; expiresAt: number; sharePassword?: string | null; duration?: string }
       }
       expect(share.hasPassword).toBe(true)
       expect(share.sharePassword).toBe('SecretPassword99')
+      expect(share.duration).toBe('1h')
       expect(share.expiresAt).toBeGreaterThan(Date.now())
 
       // 2. 外部访客不带密码访问：应返回 requirePassword: true 且不泄露正文

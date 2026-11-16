@@ -1688,6 +1688,47 @@ describe('Core Vue Components', () => {
     expect(disableBtn.textContent).toContain('删除分享')
 
     wrapper.unmount()
+
+    // 验证当再次打开已设置 1h / 1d / 30d 分享有效期的笔记时，默认应正确高亮对应选项，而非错误重置为 7d
+    for (const testDur of ['1h', '1d', '30d'] as const) {
+      const durMs = testDur === '1h' ? 3600000 : testDur === '1d' ? 86400000 : 30 * 86400000
+      const now = Date.now()
+      vi.spyOn(notesApi, 'getShare').mockResolvedValueOnce({
+        share: {
+          id: `s-${testDur}`,
+          noteId: testNote.id,
+          userId: 'u-1',
+          shareCode: `code-${testDur}`,
+          isEnabled: true,
+          hasPassword: false,
+          duration: testDur,
+          expiresAt: now + durMs,
+          viewCount: 1,
+          createdAt: now,
+          updatedAt: now,
+          shareUrl: `http://localhost/share/code-${testDur}`
+        }
+      })
+
+      const durWrapper = mount(NoteShareDialog, {
+        props: {
+          modelValue: true,
+          note: testNote
+        },
+        attachTo: document.body,
+        global: { plugins: [pinia, i18n, ElementPlus] }
+      })
+      await flushPromises()
+
+      const targetBtn = document.body.querySelector(`[data-testid="duration-${testDur}"]`) as HTMLElement
+      expect(targetBtn).not.toBeNull()
+      expect(targetBtn.className).toContain('border-rose-500')
+
+      const sevenDayBtn = document.body.querySelector('[data-testid="duration-7d"]') as HTMLElement
+      expect(sevenDayBtn.className).not.toContain('border-rose-500')
+
+      durWrapper.unmount()
+    }
   })
 
   it('ShareView 公开外部访问页面应支持免密访问、支持密码解锁流程、并在过期或不存在时正确显示状态提示', async () => {

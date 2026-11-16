@@ -111,8 +111,21 @@ async function fetchShareConfig() {
       hasPassword.value = res.share.hasPassword
       if (!res.share.expiresAt) {
         duration.value = 'permanent'
+      } else if (res.share.duration && res.share.duration !== 'custom') {
+        duration.value = res.share.duration
       } else {
-        duration.value = '7d' // 默认选项保留，保存时可重新指定时长
+        const diff = res.share.expiresAt - res.share.updatedAt
+        if (Math.abs(diff - 60 * 60 * 1000) <= 60000) {
+          duration.value = '1h'
+        } else if (Math.abs(diff - 24 * 60 * 60 * 1000) <= 60000) {
+          duration.value = '1d'
+        } else if (Math.abs(diff - 7 * 24 * 60 * 60 * 1000) <= 60000) {
+          duration.value = '7d'
+        } else if (Math.abs(diff - 30 * 24 * 60 * 60 * 1000) <= 60000) {
+          duration.value = '30d'
+        } else {
+          duration.value = '7d'
+        }
       }
       password.value = res.share.sharePassword || ''
     } else {
@@ -151,6 +164,9 @@ async function handleSave() {
       password: password.value.trim() || undefined
     })
     share.value = res.share
+    if (res.share.duration) {
+      duration.value = res.share.duration
+    }
     if (res.share.sharePassword) {
       password.value = res.share.sharePassword
     }
