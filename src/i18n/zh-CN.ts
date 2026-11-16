@@ -206,6 +206,7 @@ export default {
     passwordDesc: '开启后访客必须输入正确密码才能查看笔记正文。',
     passwordPlaceholder: '设置访问密码（4-32 位）',
     passwordPlaceholderKeep: '留空保持原有访问密码不变',
+    regeneratePassword: '重新生成4位随机密码',
     shareUrlLabel: '公开访问链接',
     copyLinkBtn: '复制链接',
     copyLinkAndPwdBtn: '复制链接与密码',

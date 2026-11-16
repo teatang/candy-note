@@ -5,6 +5,7 @@ import {
   CopyDocument,
   Key,
   Lock,
+  Refresh,
   Share,
   Timer,
   TopRight,
@@ -55,6 +56,33 @@ const shareUrl = computed(() => {
   }
   return `/share/${share.value.shareCode}`
 })
+
+/** 生成 4 位随机访问密码（字母与数字） */
+function generateRandomPassword(len = 4): string {
+  const chars = '0123456789abcdefghijklmnopqrstuvwxyz'
+  let res = ''
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const randomValues = new Uint8Array(len)
+    crypto.getRandomValues(randomValues)
+    for (let i = 0; i < len; i++) {
+      res += chars[randomValues[i] % chars.length]
+    }
+  } else {
+    for (let i = 0; i < len; i++) {
+      res += chars[Math.floor(Math.random() * chars.length)]
+    }
+  }
+  return res
+}
+
+/** 切换访问密码保护状态（打开时自动生成 4 位随机密码） */
+function togglePasswordProtection(val?: boolean) {
+  const next = typeof val === 'boolean' ? val : !hasPassword.value
+  hasPassword.value = next
+  if (next && !password.value.trim()) {
+    password.value = generateRandomPassword(4)
+  }
+}
 
 watch(
   () => props.modelValue,
@@ -293,7 +321,7 @@ function handleClose() {
           <div
             class="flex items-center justify-between cursor-pointer select-none"
             data-testid="share-password-header"
-            @click="hasPassword = !hasPassword"
+            @click="togglePasswordProtection()"
           >
             <div class="flex items-center gap-1.5">
               <el-icon class="text-slate-400">
@@ -309,7 +337,7 @@ function handleClose() {
               active-color="#f43f5e"
               size="small"
               data-testid="share-password-switch"
-              @click.stop="hasPassword = !hasPassword"
+              @click.stop="togglePasswordProtection()"
             />
           </div>
           <p class="text-[11px] text-slate-400">
@@ -319,10 +347,10 @@ function handleClose() {
           <div v-if="hasPassword" class="pt-1" data-testid="share-password-container">
             <el-input
               v-model="password"
-              type="password"
-              show-password
+              type="text"
               size="small"
               data-testid="share-password-input"
+              class="font-mono"
               :placeholder="
                 share?.hasPassword
                   ? t('shares.passwordPlaceholderKeep')
@@ -331,6 +359,19 @@ function handleClose() {
             >
               <template #prefix>
                 <el-icon class="text-slate-400"><Key /></el-icon>
+              </template>
+              <template #suffix>
+                <el-tooltip :content="t('shares.regeneratePassword')" placement="top">
+                  <button
+                    type="button"
+                    data-testid="regenerate-password-btn"
+                    class="flex items-center text-slate-400 hover:text-rose-500 transition px-1 cursor-pointer"
+                    :title="t('shares.regeneratePassword')"
+                    @click.stop="password = generateRandomPassword(4)"
+                  >
+                    <el-icon :size="14"><Refresh /></el-icon>
+                  </button>
+                </el-tooltip>
               </template>
             </el-input>
           </div>

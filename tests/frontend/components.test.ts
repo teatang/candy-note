@@ -1624,15 +1624,28 @@ describe('Core Vue Components', () => {
     dayBtn.click()
     await flushPromises()
 
-    // 开启密码保护并输入密码
+    // 开启密码保护：应自动随机生成 4 位访问密码且直接明文显示（type="text"）
     const pwdHeader = document.body.querySelector('[data-testid="share-password-header"]') as HTMLElement
     expect(pwdHeader).not.toBeNull()
     pwdHeader.click()
     await flushPromises()
 
-    const pwdInput = (document.body.querySelector('[data-testid="share-password-container"] input') ||
-      document.body.querySelector('.candy-share-dialog input[type="password"]')) as HTMLInputElement
+    const pwdInput = document.body.querySelector(
+      '[data-testid="share-password-container"] input'
+    ) as HTMLInputElement
     expect(pwdInput).not.toBeNull()
+    expect(pwdInput.type).toBe('text')
+    expect(pwdInput.value.length).toBe(4)
+
+    // 支持点击重新生成密码按钮刷新 4 位随机密码
+    const regenBtn = document.body.querySelector(
+      '[data-testid="regenerate-password-btn"]'
+    ) as HTMLButtonElement
+    expect(regenBtn).not.toBeNull()
+    regenBtn.click()
+    await flushPromises()
+    expect(pwdInput.value.length).toBe(4)
+
     pwdInput.value = 'secret123'
     pwdInput.dispatchEvent(new Event('input'))
     await flushPromises()

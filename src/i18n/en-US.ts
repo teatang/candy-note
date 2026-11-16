@@ -206,6 +206,7 @@ export default {
     passwordDesc: 'Require visitors to enter a password before viewing the note content.',
     passwordPlaceholder: 'Set access password (4-32 chars)',
     passwordPlaceholderKeep: 'Leave blank to keep existing password',
+    regeneratePassword: 'Generate 4-char random password',
     shareUrlLabel: 'Public Link',
     copyLinkBtn: 'Copy Link',
     copyLinkAndPwdBtn: 'Copy Link & Password',
