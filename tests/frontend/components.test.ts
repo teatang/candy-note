@@ -875,4 +875,204 @@ describe('Core Vue Components', () => {
 
     wrapper.unmount()
   })
+
+  it('NoteEditor 在慢响应自动保存期间用户继续编辑正文时，保存返回绝不覆盖正在编辑的最新内容，并自动跟进保存增量变更', async () => {
+    vi.useFakeTimers()
+    const initialNote = {
+      id: 'note-slow-save-1',
+      userId: 'u-1',
+      folderId: null,
+      title: '慢响应笔记',
+      content: '初始正文',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [initialNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    let resolveFirstUpdate: (val?: unknown) => void
+    const firstUpdatePromise = new Promise((resolve) => {
+      resolveFirstUpdate = resolve
+    })
+
+    const updateSpy = vi
+      .spyOn(notesApi, 'update')
+      .mockImplementationOnce(async (id, patch) => {
+        await firstUpdatePromise
+        return {
+          note: {
+            ...initialNote,
+            title: patch.title ?? initialNote.title,
+            content: patch.content ?? initialNote.content,
+            format: patch.format ?? initialNote.format,
+            updatedAt: 200
+          }
+        }
+      })
+      .mockImplementationOnce(async (id, patch) => {
+        return {
+          note: {
+            ...initialNote,
+            title: patch.title ?? initialNote.title,
+            content: patch.content ?? initialNote.content,
+            format: patch.format ?? initialNote.format,
+            updatedAt: 300
+          }
+        }
+      })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(10)
+
+    const textarea = wrapper.find('textarea')
+    expect(textarea.element.value).toBe('初始正文')
+
+    // 1. 用户第一次修改内容
+    await textarea.setValue('第一次修改的内容')
+    // 推进 1.5 秒触发自动保存
+    await vi.advanceTimersByTimeAsync(1500)
+
+    // 第一次保存请求已发出，正在慢响应中
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(updateSpy.mock.calls[0][1]).toMatchObject({
+      content: '第一次修改的内容',
+      expectedUpdatedAt: 100
+    })
+
+    // 2. 在服务器慢响应尚未返回的等待期间，用户继续在编辑器中打字输入
+    await textarea.setValue('第一次修改的内容 + 正在继续打字的最新内容')
+    expect(textarea.element.value).toBe('第一次修改的内容 + 正在继续打字的最新内容')
+
+    // 3. 此时服务端第一次慢保存响应终于返回成功！
+    resolveFirstUpdate!()
+    await flushPromises()
+
+    // 核心断言：用户的编辑内容绝不能被第一次保存返回的旧内容 ('第一次修改的内容') 覆盖掉！
+    expect(textarea.element.value).toBe('第一次修改的内容 + 正在继续打字的最新内容')
+
+    // 4. 推进时间，系统自动将慢响应期间用户输入的增量内容跟进保存
+    await vi.advanceTimersByTimeAsync(1500)
+    await flushPromises()
+
+    // 第二次保存触发，且使用最新的 expectedUpdatedAt (200) 与最新的草稿内容
+    expect(updateSpy).toHaveBeenCalledTimes(2)
+    expect(updateSpy.mock.calls[1][1]).toMatchObject({
+      content: '第一次修改的内容 + 正在继续打字的最新内容',
+      expectedUpdatedAt: 200
+    })
+    expect(textarea.element.value).toBe('第一次修改的内容 + 正在继续打字的最新内容')
+
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
+  it('NoteEditor 在慢响应保存进行中用户继续编辑并点击手动保存时，应排队等待并在首个请求返回后以最新基准版本保存最新修改', async () => {
+    vi.useFakeTimers()
+    const initialNote = {
+      id: 'note-slow-save-manual-1',
+      userId: 'u-1',
+      folderId: null,
+      title: '手动保存排队笔记',
+      content: '初始正文',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [initialNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    let resolveFirstUpdate: (val?: unknown) => void
+    const firstUpdatePromise = new Promise((resolve) => {
+      resolveFirstUpdate = resolve
+    })
+
+    const updateSpy = vi
+      .spyOn(notesApi, 'update')
+      .mockImplementationOnce(async (id, patch) => {
+        await firstUpdatePromise
+        return {
+          note: {
+            ...initialNote,
+            title: patch.title ?? initialNote.title,
+            content: patch.content ?? initialNote.content,
+            format: patch.format ?? initialNote.format,
+            updatedAt: 200
+          }
+        }
+      })
+      .mockImplementationOnce(async (id, patch) => {
+        return {
+          note: {
+            ...initialNote,
+            title: patch.title ?? initialNote.title,
+            content: patch.content ?? initialNote.content,
+            format: patch.format ?? initialNote.format,
+            updatedAt: 300
+          }
+        }
+      })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(10)
+
+    const textarea = wrapper.find('textarea')
+
+    // 1. 用户触发自动保存
+    await textarea.setValue('自动保存内容')
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+
+    // 2. 在慢响应期间继续输入并点击保存按钮
+    await textarea.setValue('自动保存内容 + 手动输入加急内容')
+    const manualSavePromise = wrapper.find('[data-testid="save-note-btn"]').trigger('click')
+
+    // 3. 此时首个请求仍然 pending，次个请求尚未发出（避免 409 冲突）
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+
+    // 4. 首个慢请求返回
+    resolveFirstUpdate!()
+    await flushPromises()
+    await manualSavePromise
+    await flushPromises()
+
+    // 5. 第二个请求已发出，且携带了首个请求返回的 updatedAt: 200
+    expect(updateSpy).toHaveBeenCalledTimes(2)
+    expect(updateSpy.mock.calls[1][1]).toMatchObject({
+      content: '自动保存内容 + 手动输入加急内容',
+      expectedUpdatedAt: 200
+    })
+    expect(textarea.element.value).toBe('自动保存内容 + 手动输入加急内容')
+
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
 })

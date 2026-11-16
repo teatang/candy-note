@@ -54,40 +54,118 @@ const conflictAutoSavePaused = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
+// 跟踪当前编辑器加载展示的笔记 ID
+const currentLoadedNoteId = ref<string | null>(null)
+
+// 记录用户最后一次输入/编辑操作的时间戳
+let lastInputTimestamp = 0
+
+// 自动保存防抖计时器
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+// 是否正在从 Store 进行全量初始化加载或切换笔记
 let syncingFromStore = false
 
-/** 同步当前选中笔记数据到本地草稿状态 */
+// 是否当前有网络保存请求在飞（in-flight）
+const isSaving = ref(false)
+
+// 当前正在飞行的保存请求 Promise
+let inFlightSavePromise: Promise<Note | null> | null = null
+
+// 正在飞行的保存请求发送的内容快照
+interface SavingSnapshot {
+  noteId: string
+  title: string
+  content: string
+  format: NoteFormat
+  expectedUpdatedAt: number
+}
+let inFlightSnapshot: SavingSnapshot | null = null
+
+// 是否在保存等待期间产生了新的本地修改需要后续跟进保存（trailing save）
+let hasPendingChanges = false
+
+/**
+ * 同步当前选中笔记数据到本地草稿状态
+ * 核心优化：
+ * 1. 仅在切换笔记（note.id 变化）或初次加载时重置草稿
+ * 2. 同篇笔记在自动保存响应较慢时，绝不覆盖用户正在输入的本地草稿（标题/正文/格式）
+ * 3. 仅同步文件夹等外部属性
+ */
 watch(
   () => noteStore.activeNote,
   (note, prevNote) => {
-    if (autoSaveTimer) {
-      clearTimeout(autoSaveTimer)
-      autoSaveTimer = null
-    }
-    if (!note || note.id !== prevNote?.id) {
+    // 1. 未选中笔记
+    if (!note) {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer)
+        autoSaveTimer = null
+      }
+      currentLoadedNoteId.value = null
+      hasPendingChanges = false
+      draftTitle.value = ''
+      draftContent.value = ''
       conflictState.value = null
       conflictDialogOpen.value = false
       conflictAutoSavePaused.value = false
+      if (layoutStore.isEditorFullscreen) {
+        layoutStore.toggleEditorFullscreen(false)
+      }
+      return
     }
-    syncingFromStore = true
-    if (note) {
+
+    // 2. 切换到不同笔记（或初次加载）
+    if (note.id !== currentLoadedNoteId.value) {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer)
+        autoSaveTimer = null
+      }
+      currentLoadedNoteId.value = note.id
+      hasPendingChanges = false
+      conflictState.value = null
+      conflictDialogOpen.value = false
+      conflictAutoSavePaused.value = false
+
+      syncingFromStore = true
       draftTitle.value = note.title
       draftContent.value = note.content
       draftFormat.value = note.format
       draftFolderId.value = note.folderId
-    } else {
-      draftTitle.value = ''
-      draftContent.value = ''
-      if (layoutStore.isEditorFullscreen) {
-        layoutStore.toggleEditorFullscreen(false)
-      }
+      setTimeout(() => {
+        syncingFromStore = false
+      }, 0)
+      return
     }
+
+    // 3. 同一篇笔记的状态更新（如慢保存响应完成返回、置顶变更等）
+    // 仅同步文件夹等外部元数据，绝不覆盖用户正在打字的 draftTitle / draftContent / draftFormat
+    if (draftFolderId.value !== note.folderId) {
+      draftFolderId.value = note.folderId
+    }
+  },
+  { immediate: true }
+)
+
+/** 监听外部主动触发的强制重置（如历史版本回退、冲突弹窗采用线上版本） */
+watch(
+  () => noteStore.forceSyncRevision,
+  () => {
+    const note = noteStore.activeNote
+    if (!note) return
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer)
+      autoSaveTimer = null
+    }
+    hasPendingChanges = false
+    syncingFromStore = true
+    draftTitle.value = note.title
+    draftContent.value = note.content
+    draftFormat.value = note.format
+    draftFolderId.value = note.folderId
     setTimeout(() => {
       syncingFromStore = false
     }, 0)
-  },
-  { immediate: true }
+  }
 )
 
 /** 全局按键监听：全屏模式下按 Esc 键快速退出（历史抽屉与冲突弹窗未打开时） */
@@ -152,13 +230,13 @@ async function handleConfirmConflictOverwrite() {
   if (!conflictState.value) return
   resolvingConflict.value = true
   try {
-    await noteStore.saveNote(conflictState.value.noteId, {
-      title: conflictState.value.localDraft.title,
-      content: conflictState.value.localDraft.content,
-      format: conflictState.value.localDraft.format,
-      changeType: 'save',
-      expectedUpdatedAt: conflictState.value.serverNote.updatedAt,
-      confirmConflict: true
+    draftTitle.value = conflictState.value.localDraft.title
+    draftContent.value = conflictState.value.localDraft.content
+    draftFormat.value = conflictState.value.localDraft.format
+    await performSave({
+      isManual: true,
+      confirmConflict: true,
+      expectedUpdatedAt: conflictState.value.serverNote.updatedAt
     })
     conflictState.value = null
     conflictDialogOpen.value = false
@@ -183,6 +261,10 @@ function handleUseServerVersion() {
   conflictState.value = null
   conflictDialogOpen.value = false
   conflictAutoSavePaused.value = false
+  draftTitle.value = serverNote.title
+  draftContent.value = serverNote.content
+  draftFormat.value = serverNote.format
+  draftFolderId.value = serverNote.folderId
   noteStore.applyServerNote(serverNote)
   ElMessage.success(t('common.success'))
 }
@@ -209,16 +291,20 @@ function handleCancelConflictDialog() {
   conflictAutoSavePaused.value = true
 }
 
-/** 处理标题或正文输入：立即记录最后编辑笔记 ID 并安排自动保存 */
+/** 处理标题或正文输入：立即记录最后编辑笔记 ID、最后输入时间戳并安排自动保存 */
 function handleEditorInput() {
+  lastInputTimestamp = Date.now()
   if (noteStore.activeNote) {
     noteStore.recordLastEditedNote(noteStore.activeNote.id)
   }
   scheduleAutoSave()
 }
 
-/** 安排 1.5 秒自动保存防抖 */
-function scheduleAutoSave() {
+/**
+ * 安排自动保存防抖
+ * @param delayOverride 自定义防抖延迟（例如慢响应返回后若检测到用户在保存期间有新输入，快速跟进保存）
+ */
+function scheduleAutoSave(delayOverride?: number) {
   if (
     syncingFromStore ||
     !noteStore.activeNote ||
@@ -227,34 +313,136 @@ function scheduleAutoSave() {
   ) {
     return
   }
+
+  // 只要用户在输入，若当前已有保存请求在飞，标记待后续跟进保存
+  if (isSaving.value) {
+    hasPendingChanges = true
+  }
+
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+  }
+
+  const delay = delayOverride !== undefined ? delayOverride : 1500
+
   noteStore.savingState = 'idle'
-  if (autoSaveTimer) clearTimeout(autoSaveTimer)
-  const targetId = noteStore.activeNote.id
-  const expectedUpdatedAt = noteStore.activeNote.updatedAt
   autoSaveTimer = setTimeout(async () => {
+    autoSaveTimer = null
     if (
       !noteStore.activeNote ||
-      noteStore.activeNote.id !== targetId ||
       conflictDialogOpen.value ||
       conflictAutoSavePaused.value
     ) {
       return
     }
     try {
-      await noteStore.saveNote(targetId, {
-        title: draftTitle.value,
-        content: draftContent.value,
-        format: draftFormat.value,
-        changeType: 'auto_save',
-        expectedUpdatedAt
+      await performSave({ isManual: false })
+    } catch {
+      // 错误已由 performSave 或 store 处理
+    }
+  }, delay)
+}
+
+/**
+ * 核心保存调度器
+ * 保证同一时刻只有一个保存请求在网络中（in-flight），
+ * 当服务器响应慢时，期间用户的一切修改都被保存在本地草稿中，
+ * 待慢响应返回并刷新最新 updatedAt 后，自动紧随其后发起下一次保存（trailing save），
+ * 杜绝内容被覆盖和并发导致的 409 冲突。
+ */
+async function performSave(options: {
+  isManual?: boolean
+  confirmConflict?: boolean
+  expectedUpdatedAt?: number
+}): Promise<Note | null> {
+  const note = noteStore.activeNote
+  if (!note) return null
+
+  // 如果冲突对话框已打开或暂停自动保存且不是确认冲突，则不保存
+  if ((conflictDialogOpen.value || conflictAutoSavePaused.value) && !options.confirmConflict) {
+    return null
+  }
+
+  // 如果当前已有保存请求在飞行中（in-flight）
+  if (isSaving.value) {
+    hasPendingChanges = true
+    if (options.isManual && inFlightSavePromise) {
+      // 用户主动手动保存（Ctrl+S 或点击保存按钮），等待当前慢请求完成
+      await inFlightSavePromise
+      // 当前慢请求完成后，如果仍有未保存的最新输入，接着保存最新内容
+      if (hasUnsavedChanges.value || hasPendingChanges) {
+        return performSave(options)
+      }
+      return noteStore.activeNote
+    }
+    return null
+  }
+
+  const targetId = note.id
+  // 捕获本次发送的快照
+  const snapshot: SavingSnapshot = {
+    noteId: targetId,
+    title: draftTitle.value,
+    content: draftContent.value,
+    format: draftFormat.value,
+    expectedUpdatedAt: options.expectedUpdatedAt ?? note.updatedAt
+  }
+
+  isSaving.value = true
+  inFlightSnapshot = snapshot
+  hasPendingChanges = false
+
+  const savePromise = (async () => {
+    try {
+      const updated = await noteStore.saveNote(targetId, {
+        title: snapshot.title,
+        content: snapshot.content,
+        format: snapshot.format,
+        changeType: options.isManual ? 'save' : 'auto_save',
+        expectedUpdatedAt: snapshot.expectedUpdatedAt,
+        confirmConflict: options.confirmConflict
       })
+
+      // 保存成功！
+      // 检查在保存等待期间，用户是否又输入了新的内容（且依然停留在当前笔记）
+      if (noteStore.activeNote && noteStore.activeNote.id === targetId) {
+        const draftChangedDuringSave =
+          draftTitle.value !== snapshot.title ||
+          draftContent.value !== snapshot.content ||
+          draftFormat.value !== snapshot.format
+
+        if (draftChangedDuringSave || hasPendingChanges) {
+          // 用户在慢保存响应期间继续打字了！
+          // 检查用户距离上一次打字停手的时间
+          const elapsed = Date.now() - lastInputTimestamp
+          if (elapsed >= 1500) {
+            // 用户已经停手超过防抖时间，立即（50ms）跟进保存最新草稿
+            scheduleAutoSave(50)
+          } else {
+            // 用户刚才还在打字，等待剩余防抖时间后再保存
+            scheduleAutoSave(Math.max(50, 1500 - elapsed))
+          }
+        } else {
+          hasPendingChanges = false
+        }
+      }
+
+      return updated
     } catch (err) {
       if (err instanceof NoteConflictError) {
         openConflictPrompt(targetId, err.serverNote)
       }
-      // 其他错误状态已在 store 中标记
+      throw err
+    } finally {
+      isSaving.value = false
+      inFlightSnapshot = null
+      inFlightSavePromise = null
     }
-  }, 1500)
+  })()
+
+  inFlightSavePromise = savePromise
+  return savePromise
 }
 
 /** 立即执行手动保存并生成历史快照 */
@@ -267,13 +455,7 @@ async function handleManualSave() {
     autoSaveTimer = null
   }
   try {
-    await noteStore.saveNote(note.id, {
-      title: draftTitle.value,
-      content: draftContent.value,
-      format: draftFormat.value,
-      changeType: 'save',
-      expectedUpdatedAt: note.updatedAt
-    })
+    await performSave({ isManual: true })
     conflictState.value = null
     conflictAutoSavePaused.value = false
     ElMessage.success(t('common.saved'))
@@ -324,13 +506,7 @@ async function handleFormatChange(format: NoteFormat) {
   }
   noteStore.recordLastEditedNote(note.id)
   try {
-    await noteStore.saveNote(note.id, {
-      title: draftTitle.value,
-      content: draftContent.value,
-      format,
-      changeType: 'save',
-      expectedUpdatedAt: note.updatedAt
-    })
+    await performSave({ isManual: true })
     conflictState.value = null
     conflictAutoSavePaused.value = false
   } catch (err) {
@@ -385,6 +561,7 @@ async function handleDeleteNote() {
 
 /** 在当前光标位置插入 Markdown 片段或普通文本 */
 function insertAtCursor(snippet: string) {
+  lastInputTimestamp = Date.now()
   if (noteStore.activeNote) {
     noteStore.recordLastEditedNote(noteStore.activeNote.id)
   }
@@ -409,6 +586,7 @@ function insertAtCursor(snippet: string) {
 
 /** 包裹选中文字（用于粗体、斜体等格式） */
 function wrapSelection(prefix: string, suffix = prefix, placeholder = 'text') {
+  lastInputTimestamp = Date.now()
   if (noteStore.activeNote) {
     noteStore.recordLastEditedNote(noteStore.activeNote.id)
   }

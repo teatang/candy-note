@@ -97,6 +97,7 @@ export const useNoteStore = defineStore('note', () => {
   const loading = ref(false)
   const savingState = ref<'idle' | 'saving' | 'saved' | 'error' | 'conflict'>('idle')
   const uploadingImage = ref(false)
+  const forceSyncRevision = ref(0)
 
   /** 持久化最后编辑的笔记 ID 与 Markdown 视图模式到 localStorage */
   function persistEditorState(
@@ -468,6 +469,7 @@ export const useNoteStore = defineStore('note', () => {
       persistEditorState(serverNote.id, markdownViewMode.value)
     }
     savingState.value = 'saved'
+    forceSyncRevision.value++
     return serverNote
   }
 
@@ -537,6 +539,7 @@ export const useNoteStore = defineStore('note', () => {
       persistEditorState(noteId, markdownViewMode.value)
     }
     await loadVersions(noteId)
+    forceSyncRevision.value++
     return res.note
   }
 
@@ -588,6 +591,7 @@ export const useNoteStore = defineStore('note', () => {
     loading,
     savingState,
     uploadingImage,
+    forceSyncRevision,
     activeNote,
     filteredNotes,
     pinnedNotes,
