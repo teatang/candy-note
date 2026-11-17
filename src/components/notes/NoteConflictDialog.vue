@@ -265,7 +265,7 @@ function handleClose() {
                   :class="
                     editableDraft.format === 'markdown'
                       ? 'bg-indigo-50 text-indigo-600 shadow-2xs dark:bg-indigo-500/25 dark:text-indigo-300'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                   "
                   @click="handleFormatSelect('markdown')"
                 >
@@ -278,7 +278,7 @@ function handleClose() {
                   :class="
                     editableDraft.format === 'plain'
                       ? 'bg-slate-200 text-slate-800 shadow-2xs dark:bg-slate-700 dark:text-slate-100'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                   "
                   @click="handleFormatSelect('plain')"
                 >

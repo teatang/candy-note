@@ -801,7 +801,7 @@ function handleKeydown(e: KeyboardEvent) {
               :class="
                 draftFormat === 'markdown'
                   ? 'bg-white font-medium text-rose-600 shadow-xs dark:bg-slate-700 dark:text-rose-300'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
               "
               @click="handleFormatChange('markdown')"
             >
@@ -814,7 +814,7 @@ function handleKeydown(e: KeyboardEvent) {
               :class="
                 draftFormat === 'plain'
                   ? 'bg-white font-medium text-rose-600 shadow-xs dark:bg-slate-700 dark:text-rose-300'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
               "
               @click="handleFormatChange('plain')"
             >
@@ -840,7 +840,7 @@ function handleKeydown(e: KeyboardEvent) {
               :class="
                 viewMode === m.key
                   ? 'bg-white font-medium text-slate-900 shadow-xs dark:bg-slate-700 dark:text-slate-100'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
               "
               @click="viewMode = m.key as MarkdownViewMode"
             >

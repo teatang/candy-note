@@ -142,6 +142,14 @@ describe('Core Vue Components', () => {
     expect(preview.exists()).toBe(true)
     expect(preview.html()).toContain('<h1>实时标题</h1>')
 
+    // 模式切换与格式切换按钮在暗黑模式下 hover 时应具备高可见度（dark:hover:text-slate-200）
+    const editModeBtn = wrapper.find('[data-testid="view-mode-edit"]')
+    expect(editModeBtn.exists()).toBe(true)
+    expect(editModeBtn.classes()).toContain('dark:hover:text-slate-200')
+    const plainFormatBtn = wrapper.find('[data-testid="format-switch-plain"]')
+    expect(plainFormatBtn.exists()).toBe(true)
+    expect(plainFormatBtn.classes()).toContain('dark:hover:text-slate-200')
+
     // 修改 Markdown 内容时右侧预览应同步更新，且外部链接自动具备新开标签页属性
     await textarea.setValue('## 更新后的副标题\n\n**加粗内容** [Cloudflare](https://cloudflare.com)')
     expect(wrapper.find('.candy-markdown-body').html()).toContain('<h2>更新后的副标题</h2>')
