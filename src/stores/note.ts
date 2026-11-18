@@ -6,6 +6,7 @@ import { foldersApi } from '@/api/folders'
 import { notesApi } from '@/api/notes'
 import { useAuthStore } from '@/stores/auth'
 import type { Attachment, Folder, MarkdownViewMode, Note, NoteFormat, NoteVersion } from '@/types'
+import { compressImage } from '@/utils/image'
 import { buildSortPayload, reorderListById } from '@/utils/reorder'
 
 /** 多设备并发保存检测到版本不一致时抛出的冲突异常 */
@@ -543,11 +544,12 @@ export const useNoteStore = defineStore('note', () => {
     return res.note
   }
 
-  /** 上传图片至 Cloudflare R2 */
+  /** 上传图片至 Cloudflare R2（上传前进行无损/近无损高质量压缩优化） */
   async function uploadImage(file: File, noteId: string | null) {
     uploadingImage.value = true
     try {
-      const res = await filesApi.upload(file, noteId)
+      const fileToUpload = await compressImage(file)
+      const res = await filesApi.upload(fileToUpload, noteId)
       if (noteId && activeNoteId.value === noteId) {
         attachments.value.unshift(res.attachment)
         persistEditorState(noteId, markdownViewMode.value)
