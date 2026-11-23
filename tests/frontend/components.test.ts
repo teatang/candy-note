@@ -1422,6 +1422,87 @@ describe('Core Vue Components', () => {
     wrapper.unmount()
   })
 
+  it('Markdown 笔记在纯预览模式下右侧应展示目录 (TOC)，且支持折叠与展开', async () => {
+    const mdWithHeadings = {
+      id: 'note-toc-test-1',
+      userId: 'u-1',
+      folderId: null,
+      title: 'TOC目录测试笔记',
+      content: '# 第一章 核心介绍\n\n正文描述...\n\n## 1.1 架构设计\n\n### 1.1.1 细节规范\n\n# 第二章 运维部署',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [mdWithHeadings] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    // 1. 分栏模式与纯编辑模式下不应渲染目录侧边栏
+    noteStore.setMarkdownViewMode('split')
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="markdown-toc-sidebar"]').exists()).toBe(false)
+
+    noteStore.setMarkdownViewMode('edit')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="markdown-toc-sidebar"]').exists()).toBe(false)
+
+    // 2. 切换到纯预览模式，右侧目录侧边栏应自动出现并正确解析各级标题
+    noteStore.setMarkdownViewMode('preview')
+    await flushPromises()
+    const tocSidebar = wrapper.find('[data-testid="markdown-toc-sidebar"]')
+    expect(tocSidebar.exists()).toBe(true)
+
+    // 检查目录条目内容
+    const item0 = wrapper.find('[data-testid="toc-item-heading-0"]')
+    const item1 = wrapper.find('[data-testid="toc-item-heading-1"]')
+    const item2 = wrapper.find('[data-testid="toc-item-heading-2"]')
+    const item3 = wrapper.find('[data-testid="toc-item-heading-3"]')
+    expect(item0.exists()).toBe(true)
+    expect(item0.text()).toContain('第一章 核心介绍')
+    expect(item1.text()).toContain('1.1 架构设计')
+    expect(item2.text()).toContain('1.1.1 细节规范')
+    expect(item3.text()).toContain('第二章 运维部署')
+
+    // 3. 点击折叠按钮，目录应收起为细条（显示展开按钮）
+    const collapseBtn = wrapper.find('[data-testid="collapse-toc-btn"]')
+    expect(collapseBtn.exists()).toBe(true)
+    await collapseBtn.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="expand-toc-btn"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="collapse-toc-btn"]').exists()).toBe(false)
+
+    // 4. 点击展开按钮，目录应恢复展开
+    const expandBtn = wrapper.find('[data-testid="expand-toc-btn"]')
+    await expandBtn.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="collapse-toc-btn"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="expand-toc-btn"]').exists()).toBe(false)
+
+    // 5. 点击目录项应触发滚动
+    const scrollMock = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = scrollMock
+    await item1.trigger('click')
+    await flushPromises()
+    expect(scrollMock).toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
   it('NoteList 笔记列表在拖拽排序时应渲染高可见度的拖拽插入指示线', async () => {
     const note1 = {
       id: 'note-drag-1',

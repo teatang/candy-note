@@ -69,3 +69,47 @@ export function sanitizeHtml(html: string): string {
   })
 }
 
+export interface MarkdownTocItem {
+  id: string
+  text: string
+  level: number
+  index: number
+}
+
+/**
+ * 从 Markdown 源码中解析出各级标题的目录数据 (TOC)
+ * 自动忽略代码块内部的干扰内容，提取纯文本标题并计算缩进层级
+ */
+export function extractMarkdownToc(markdown: string): MarkdownTocItem[] {
+  if (!markdown || typeof markdown !== 'string') return []
+  try {
+    const tokens = markedParser.lexer(markdown)
+    const toc: MarkdownTocItem[] = []
+    let index = 0
+
+    for (const token of tokens) {
+      if (token.type === 'heading') {
+        // 过滤标题内的 Markdown 格式标记（链接、加粗、斜体、行内代码等）
+        const cleanText = token.text
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+          .replace(/[*_`~]/g, '')
+          .trim()
+        if (cleanText) {
+          toc.push({
+            id: `heading-${index}`,
+            text: cleanText,
+            level: Math.min(6, Math.max(1, token.depth)),
+            index
+          })
+          index++
+        }
+      }
+    }
+
+    return toc
+  } catch {
+    return []
+  }
+}
+
+

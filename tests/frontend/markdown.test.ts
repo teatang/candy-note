@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { renderMarkdownSafe } from '@/utils/markdown'
+import { extractMarkdownToc, renderMarkdownSafe } from '@/utils/markdown'
 
 /**
  * Markdown 安全解析、外链新标签页打开、XSS 防护及日夜间代码块样式单元测试
@@ -107,5 +107,66 @@ describe('Markdown Safe Renderer', () => {
     expect(darkPreMatch).not.toBeNull()
     expect(darkPreMatch![1]).toContain('#0f172a')
     expect(darkPreMatch![1]).toContain('#e2e8f0')
+  })
+
+  it('extractMarkdownToc 应精准解析多级标题层级、过滤语法修饰并忽略代码块内部的假标题', () => {
+    const md = [
+      '# 1. 糖果笔记核心架构',
+      '',
+      '正文段落描述...',
+      '',
+      '## 1.1 **数据库**与 [存储](https://cloudflare.com)',
+      '',
+      '```markdown',
+      '# 代码块里的标题不是真实标题',
+      '## 也不应该被提取到目录',
+      '```',
+      '',
+      '### 1.1.1 D1 与 SQLite 本地开发',
+      '#### 1.1.1.1 细节说明',
+      '# 2. 部署与上线'
+    ].join('\n')
+
+    const toc = extractMarkdownToc(md)
+    expect(toc).toHaveLength(5)
+
+    expect(toc[0]).toEqual({
+      id: 'heading-0',
+      text: '1. 糖果笔记核心架构',
+      level: 1,
+      index: 0
+    })
+
+    expect(toc[1]).toEqual({
+      id: 'heading-1',
+      text: '1.1 数据库与 存储',
+      level: 2,
+      index: 1
+    })
+
+    expect(toc[2]).toEqual({
+      id: 'heading-2',
+      text: '1.1.1 D1 与 SQLite 本地开发',
+      level: 3,
+      index: 2
+    })
+
+    expect(toc[3]).toEqual({
+      id: 'heading-3',
+      text: '1.1.1.1 细节说明',
+      level: 4,
+      index: 3
+    })
+
+    expect(toc[4]).toEqual({
+      id: 'heading-4',
+      text: '2. 部署与上线',
+      level: 1,
+      index: 4
+    })
+
+    // 空内容或纯正文不应提取出标题
+    expect(extractMarkdownToc('')).toEqual([])
+    expect(extractMarkdownToc('只是普通段落，没有任何标题')).toEqual([])
   })
 })

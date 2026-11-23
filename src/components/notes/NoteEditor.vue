@@ -3,9 +3,12 @@ import {
   ArrowLeft,
   Check,
   Clock,
+  DArrowLeft,
+  DArrowRight,
   Delete,
   Document,
   FullScreen,
+  List,
   Picture,
   ScaleToOriginal,
   Share,
@@ -14,14 +17,14 @@ import {
   WarningFilled
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { notesApi } from '@/api/notes'
 import { resolveApiErrorMessage } from '@/api/client'
 import { useLayoutStore } from '@/stores/layout'
 import { NoteConflictError, useNoteStore } from '@/stores/note'
 import type { MarkdownViewMode, Note, NoteFormat } from '@/types'
-import { renderMarkdownSafe } from '@/utils/markdown'
+import { extractMarkdownToc, type MarkdownTocItem, renderMarkdownSafe } from '@/utils/markdown'
 import NoteConflictDialog, { type NoteConflictPayload } from './NoteConflictDialog.vue'
 import NoteShareDialog from './NoteShareDialog.vue'
 import TiptapEditor from './TiptapEditor.vue'
@@ -215,6 +218,71 @@ const renderedMarkdownHtml = computed(() => {
   if (draftFormat.value !== 'markdown') return ''
   return renderMarkdownSafe(draftContent.value)
 })
+
+// Markdown 纯预览模式下的目录状态与滚动定位
+const previewContainerRef = ref<HTMLDivElement | null>(null)
+const isTocCollapsed = ref(false)
+const activeHeadingId = ref('')
+
+const markdownToc = computed<MarkdownTocItem[]>(() => {
+  if (draftFormat.value !== 'markdown') return []
+  return extractMarkdownToc(draftContent.value)
+})
+
+/** 点击目录项平滑滚动至预览区对应的标题 */
+function scrollToHeading(item: MarkdownTocItem) {
+  activeHeadingId.value = item.id
+  if (!previewContainerRef.value) return
+  let el = previewContainerRef.value.querySelector<HTMLElement>(`#${item.id}`)
+  if (!el) {
+    const headings = previewContainerRef.value.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')
+    el = headings[item.index] || null
+    if (el) el.id = item.id
+  }
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+/** 监听预览区滚动，动态高亮当前视口内的标题目录项 */
+function handlePreviewScroll() {
+  if (!previewContainerRef.value || markdownToc.value.length === 0) return
+  const headings = Array.from(
+    previewContainerRef.value.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')
+  )
+  if (headings.length === 0) return
+
+  const containerTop = previewContainerRef.value.getBoundingClientRect().top
+  let currentActiveId = headings[0].id || 'heading-0'
+  for (const h of headings) {
+    const rect = h.getBoundingClientRect()
+    if (rect.top - containerTop <= 80) {
+      currentActiveId = h.id
+    } else {
+      break
+    }
+  }
+  if (currentActiveId) {
+    activeHeadingId.value = currentActiveId
+  }
+}
+
+watch(
+  [renderedMarkdownHtml, viewMode],
+  async () => {
+    if (draftFormat.value !== 'markdown' || viewMode.value !== 'preview') return
+    await nextTick()
+    if (!previewContainerRef.value) return
+    const headingEls = previewContainerRef.value.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')
+    headingEls.forEach((el, index) => {
+      el.id = `heading-${index}`
+    })
+    if (markdownToc.value.length > 0 && !markdownToc.value.some((h) => h.id === activeHeadingId.value)) {
+      activeHeadingId.value = markdownToc.value[0].id
+    }
+  },
+  { immediate: true }
+)
 
 const displayWordCount = computed(() => {
   if (draftFormat.value === 'markdown') {
@@ -1126,11 +1194,13 @@ function handleKeydown(e: KeyboardEvent) {
         <!-- Markdown 编辑器（分栏 / 纯编辑 / 纯预览） -->
         <div
           v-if="draftFormat === 'markdown'"
-          class="grid min-h-0 flex-1"
+          class="min-h-0 flex-1"
           :class="
             viewMode === 'split'
-              ? 'grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1'
-              : 'grid-cols-1'
+              ? 'grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1'
+              : viewMode === 'edit'
+                ? 'grid grid-cols-1'
+                : 'flex flex-row overflow-hidden'
           "
         >
           <textarea
@@ -1151,9 +1221,107 @@ function handleKeydown(e: KeyboardEvent) {
 
           <div
             v-if="viewMode === 'split' || viewMode === 'preview'"
-            class="candy-markdown-body min-h-0 h-full overflow-y-auto p-4 text-slate-800 sm:p-6 dark:text-slate-200"
+            ref="previewContainerRef"
+            class="candy-markdown-body min-h-0 h-full flex-1 overflow-y-auto p-4 text-slate-800 sm:p-6 dark:text-slate-200"
             v-html="renderedMarkdownHtml"
+            @scroll.passive="handlePreviewScroll"
           />
+
+          <!-- 纯预览模式下的右侧可折叠目录 (TOC) -->
+          <aside
+            v-if="viewMode === 'preview'"
+            data-testid="markdown-toc-sidebar"
+            class="relative shrink-0 border-l border-slate-200/80 bg-slate-50/70 transition-all duration-200 dark:border-slate-800 dark:bg-slate-900/50"
+            :class="isTocCollapsed ? 'w-10' : 'w-60 md:w-64'"
+          >
+            <!-- 折叠状态下的侧边收起条 -->
+            <div
+              v-if="isTocCollapsed"
+              class="flex h-full flex-col items-center py-3"
+            >
+              <el-tooltip :content="t('notes.expandToc')" placement="left">
+                <button
+                  type="button"
+                  data-testid="expand-toc-btn"
+                  class="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  :title="t('notes.expandToc')"
+                  @click="isTocCollapsed = false"
+                >
+                  <el-icon :size="16"><DArrowLeft /></el-icon>
+                </button>
+              </el-tooltip>
+              <button
+                type="button"
+                data-testid="expand-toc-text-btn"
+                class="mt-3 text-[11px] font-medium text-slate-400 hover:text-rose-500 transition [writing-mode:vertical-rl] tracking-widest select-none cursor-pointer"
+                :title="t('notes.expandToc')"
+                @click="isTocCollapsed = false"
+              >
+                {{ t('notes.tocTitle') }}
+              </button>
+            </div>
+
+            <!-- 展开状态下的目录面板 -->
+            <div
+              v-else
+              class="flex h-full flex-col min-h-0 p-3.5"
+            >
+              <div class="flex items-center justify-between pb-2.5 border-b border-slate-200/70 dark:border-slate-800">
+                <div class="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <el-icon class="text-rose-500"><List /></el-icon>
+                  <span>{{ t('notes.tocTitle') }}</span>
+                  <span v-if="markdownToc.length > 0" class="text-[10px] font-normal text-slate-400">
+                    ({{ markdownToc.length }})
+                  </span>
+                </div>
+                <el-tooltip :content="t('notes.collapseToc')" placement="left">
+                  <button
+                    type="button"
+                    data-testid="collapse-toc-btn"
+                    class="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                    :title="t('notes.collapseToc')"
+                    @click="isTocCollapsed = true"
+                  >
+                    <el-icon :size="14"><DArrowRight /></el-icon>
+                  </button>
+                </el-tooltip>
+              </div>
+
+              <!-- 目录为空提示 -->
+              <div
+                v-if="markdownToc.length === 0"
+                class="flex flex-1 items-center justify-center text-center text-xs text-slate-400"
+              >
+                {{ t('notes.tocEmpty') }}
+              </div>
+
+              <!-- 目录条目导航 -->
+              <nav
+                v-else
+                class="flex-1 overflow-y-auto pt-2 space-y-0.5 text-xs pr-1"
+              >
+                <button
+                  v-for="item in markdownToc"
+                  :key="item.id"
+                  :data-testid="`toc-item-${item.id}`"
+                  type="button"
+                  class="group flex w-full items-center text-left rounded-md px-2 py-1.5 transition text-xs cursor-pointer"
+                  :class="[
+                    item.level === 1 ? 'font-medium' : '',
+                    item.level === 2 ? 'pl-4' : '',
+                    item.level === 3 ? 'pl-7 text-[11px]' : '',
+                    item.level >= 4 ? 'pl-9 text-[11px]' : '',
+                    activeHeadingId === item.id
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300 font-medium'
+                      : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200'
+                  ]"
+                  @click="scrollToHeading(item)"
+                >
+                  <span class="truncate">{{ item.text }}</span>
+                </button>
+              </nav>
+            </div>
+          </aside>
         </div>
 
         <!-- Tiptap 富文本编辑器（替代原普通文本 textarea） -->
