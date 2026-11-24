@@ -211,6 +211,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer)
   window.removeEventListener('keydown', handleWindowKeydown)
 })
 
@@ -223,6 +224,18 @@ const renderedMarkdownHtml = computed(() => {
 const previewContainerRef = ref<HTMLDivElement | null>(null)
 const isTocCollapsed = ref(false)
 const activeHeadingId = ref('')
+let isProgrammaticScroll = false
+let programmaticScrollTimer: ReturnType<typeof setTimeout> | null = null
+
+function handleUserScrollInteraction() {
+  if (isProgrammaticScroll) {
+    isProgrammaticScroll = false
+    if (programmaticScrollTimer) {
+      clearTimeout(programmaticScrollTimer)
+      programmaticScrollTimer = null
+    }
+  }
+}
 
 const markdownToc = computed<MarkdownTocItem[]>(() => {
   if (draftFormat.value !== 'markdown') return []
@@ -240,23 +253,44 @@ function scrollToHeading(item: MarkdownTocItem) {
     if (el) el.id = item.id
   }
   if (el) {
+    isProgrammaticScroll = true
+    if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer)
+    programmaticScrollTimer = setTimeout(() => {
+      isProgrammaticScroll = false
+    }, 800)
     el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
 
 /** 监听预览区滚动，动态高亮当前视口内的标题目录项 */
 function handlePreviewScroll() {
+  if (isProgrammaticScroll) return
   if (!previewContainerRef.value || markdownToc.value.length === 0) return
+  const container = previewContainerRef.value
   const headings = Array.from(
-    previewContainerRef.value.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')
+    container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')
   )
   if (headings.length === 0) return
 
-  const containerTop = previewContainerRef.value.getBoundingClientRect().top
+  // 1. 若当前可滚动且已滚动到容器最底部，直接高亮末尾标题（解决末尾多个标题靠得很近或篇幅较短无法滑到顶部的边界问题）
+  const isScrollable = container.scrollHeight > container.clientHeight
+  const isBottom =
+    isScrollable &&
+    Math.ceil(container.scrollTop + container.clientHeight) >= container.scrollHeight - 15
+  if (isBottom) {
+    const lastHeading = headings[headings.length - 1]
+    if (lastHeading && lastHeading.id) {
+      activeHeadingId.value = lastHeading.id
+      return
+    }
+  }
+
+  // 2. 正常视口滚动计算：寻找当前视口内或刚滑过视口顶部的标题
+  const containerTop = container.getBoundingClientRect().top
   let currentActiveId = headings[0].id || 'heading-0'
   for (const h of headings) {
     const rect = h.getBoundingClientRect()
-    if (rect.top - containerTop <= 80) {
+    if (rect.top - containerTop <= 32) {
       currentActiveId = h.id
     } else {
       break
@@ -1223,8 +1257,12 @@ function handleKeydown(e: KeyboardEvent) {
             v-if="viewMode === 'split' || viewMode === 'preview'"
             ref="previewContainerRef"
             class="candy-markdown-body min-h-0 h-full flex-1 overflow-y-auto p-4 text-slate-800 sm:p-6 dark:text-slate-200"
+            :class="viewMode === 'preview' ? 'pb-[50vh]' : ''"
             v-html="renderedMarkdownHtml"
             @scroll.passive="handlePreviewScroll"
+            @wheel.passive="handleUserScrollInteraction"
+            @touchmove.passive="handleUserScrollInteraction"
+            @mousedown.passive="handleUserScrollInteraction"
           />
 
           <!-- 纯预览模式下的右侧可折叠目录 (TOC) -->

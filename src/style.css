@@ -58,6 +58,14 @@ body {
   font-size: 15px;
   word-break: break-word;
 }
+.candy-markdown-body h1,
+.candy-markdown-body h2,
+.candy-markdown-body h3,
+.candy-markdown-body h4,
+.candy-markdown-body h5,
+.candy-markdown-body h6 {
+  scroll-margin-top: 12px;
+}
 .candy-markdown-body h1 {
   font-size: 1.75rem;
   font-weight: 700;

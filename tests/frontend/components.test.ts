@@ -1493,12 +1493,85 @@ describe('Core Vue Components', () => {
     expect(wrapper.find('[data-testid="collapse-toc-btn"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="expand-toc-btn"]').exists()).toBe(false)
 
-    // 5. 点击目录项应触发滚动
+    // 5. 点击目录项应触发平滑滚动且高亮对应目录项
     const scrollMock = vi.fn()
     window.HTMLElement.prototype.scrollIntoView = scrollMock
-    await item1.trigger('click')
+    const activeItem1 = wrapper.find('[data-testid="toc-item-heading-1"]')
+    await activeItem1.trigger('click')
     await flushPromises()
     expect(scrollMock).toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="toc-item-heading-1"]').classes()).toContain('text-rose-600')
+
+    // 点击最后的索引项（即使末尾标题相距较近），也必须高亮在最后的索引上
+    const activeItem3 = wrapper.find('[data-testid="toc-item-heading-3"]')
+    await activeItem3.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="toc-item-heading-3"]').classes()).toContain('text-rose-600')
+    expect(wrapper.find('[data-testid="toc-item-heading-1"]').classes()).not.toContain('text-rose-600')
+
+    wrapper.unmount()
+  })
+
+  it('Markdown 纯预览模式下正文末尾多个索引靠得很近时，点击最后的索引应正确保持高亮在最后的索引上', async () => {
+    const mdWithCloseHeadings = {
+      id: 'note-toc-close-headings-test',
+      userId: 'u-1',
+      folderId: null,
+      title: '末尾临近标题高亮测试',
+      content: '# 导言篇章\n\n大量正文内容...\n\n# 附录一\n\n附录一简述\n\n# 附录二\n\n附录二简述\n\n# 附录三\n\n结束',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [mdWithCloseHeadings] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+    noteStore.setMarkdownViewMode('preview')
+
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+
+    const scrollMock = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = scrollMock
+
+    const itemLast = wrapper.find('[data-testid="toc-item-heading-3"]')
+    const itemPrev = wrapper.find('[data-testid="toc-item-heading-2"]')
+    expect(itemLast.exists()).toBe(true)
+    expect(itemPrev.exists()).toBe(true)
+
+    // 点击末尾的最后一个索引
+    await itemLast.trigger('click')
+    await flushPromises()
+    expect(scrollMock).toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="toc-item-heading-3"]').classes()).toContain('text-rose-600')
+    expect(wrapper.find('[data-testid="toc-item-heading-2"]').classes()).not.toContain('text-rose-600')
+
+    // 模拟预览容器在点击滚动过程中触发 scroll 事件（例如末尾标题未到达视口顶部时）
+    const previewContainer = wrapper.find('.candy-markdown-body')
+    expect(previewContainer.exists()).toBe(true)
+    // 预览容器应带有 pb-[50vh] 允许末尾内容滚动到视口顶部
+    expect(previewContainer.classes()).toContain('pb-[50vh]')
+
+    await previewContainer.trigger('scroll')
+    await flushPromises()
+    // 由于程序化滚动保护与滚动到底部逻辑，最后索引高亮不会被错误跳回前置标题
+    expect(wrapper.find('[data-testid="toc-item-heading-3"]').classes()).toContain('text-rose-600')
+
+    // 用户手动滚轮交互测试：释放程序化保护
+    await previewContainer.trigger('wheel')
+    await flushPromises()
 
     wrapper.unmount()
   })
