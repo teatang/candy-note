@@ -542,7 +542,7 @@ defineExpose({
         <button
           type="button"
           data-testid="tiptap-toggle-fullscreen"
-          class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition"
+          class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition cursor-pointer"
           :class="
             isFullscreen
               ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-500/25 dark:text-rose-300'
@@ -551,6 +551,7 @@ defineExpose({
           :title="isFullscreen ? '退出全屏 (Esc)' : '全屏编辑 (Esc退出)'"
           @click="toggleFullscreen"
         >
+          <!-- 退出全屏图标（向内收缩折角） -->
           <svg
             v-if="isFullscreen"
             class="h-3.5 w-3.5"
@@ -562,9 +563,10 @@ defineExpose({
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
-              d="M9 9L4 4m0 0h4m-4 0v4m11 5l5 5m0 0h-4m4 0v-4m-5-11l5-5m0 0h-4m4 0v4M9 15l-5 5m0 0h4m-4 0v-4"
+              d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"
             />
           </svg>
+          <!-- 进入全屏图标（向外展开取景框） -->
           <svg
             v-else
             class="h-3.5 w-3.5"
@@ -576,7 +578,7 @@ defineExpose({
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
-              d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+              d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"
             />
           </svg>
           <span>{{ isFullscreen ? '退出全屏' : '全屏' }}</span>
