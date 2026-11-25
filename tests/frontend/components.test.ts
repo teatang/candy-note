@@ -1576,6 +1576,92 @@ describe('Core Vue Components', () => {
     wrapper.unmount()
   })
 
+  it('Markdown 纯编辑模式下字符统计后应展示全屏编辑按钮，并支持点击与 Esc 键切换全屏', async () => {
+    const mdNote = {
+      id: 'note-md-fullscreen-test',
+      userId: 'u-1',
+      folderId: null,
+      title: 'Markdown 全屏测试笔记',
+      content: '# 标题\n\n测试内容',
+      format: 'markdown' as const,
+      isPinned: false,
+      pinnedAt: null,
+      sortOrder: 0,
+      createdAt: 100,
+      updatedAt: 100
+    }
+
+    vi.spyOn(foldersApi, 'list').mockResolvedValue({ folders: [] })
+    vi.spyOn(notesApi, 'list').mockResolvedValue({ notes: [mdNote] })
+    vi.spyOn(filesApi, 'listByNote').mockResolvedValue({ attachments: [] })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const noteStore = useNoteStore()
+    await noteStore.loadWorkspace()
+
+    // 1. 分栏模式与纯预览模式下不应显示工具栏内的全屏编辑按钮
+    noteStore.setMarkdownViewMode('split')
+    const wrapper = mount(NoteEditor, {
+      attachTo: document.body,
+      global: { plugins: [pinia, i18n, ElementPlus] }
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').exists()).toBe(false)
+
+    noteStore.setMarkdownViewMode('preview')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').exists()).toBe(false)
+    expect(wrapper.find('textarea').exists()).toBe(false)
+    expect(wrapper.find('.candy-markdown-body').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="markdown-toc-sidebar"]').exists()).toBe(true)
+
+    // 2. 切换到纯编辑模式，字符统计后面应展示全屏编辑按钮
+    noteStore.setMarkdownViewMode('edit')
+    await flushPromises()
+
+    const fullscreenBtn = wrapper.find('[data-testid="markdown-toggle-fullscreen"]')
+    expect(fullscreenBtn.exists()).toBe(true)
+    expect(fullscreenBtn.text()).toContain('全屏')
+
+    const mdEditorWrapper = wrapper.find('[data-testid="markdown-editor-wrapper"]')
+    expect(mdEditorWrapper.exists()).toBe(true)
+    expect(mdEditorWrapper.classes()).not.toContain('fixed')
+
+    // 3. 点击全屏编辑按钮进入全屏
+    await fullscreenBtn.trigger('click')
+    await flushPromises()
+
+    expect(mdEditorWrapper.classes()).toContain('fixed')
+    expect(mdEditorWrapper.classes()).toContain('inset-0')
+    expect(mdEditorWrapper.classes()).toContain('z-50')
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').text()).toContain('退出全屏')
+    const textarea = wrapper.find('textarea')
+    expect(textarea.classes()).toContain('max-w-4xl')
+    expect(textarea.classes()).toContain('mx-auto')
+
+    // 4. 再次点击退出全屏
+    await wrapper.find('[data-testid="markdown-toggle-fullscreen"]').trigger('click')
+    await flushPromises()
+
+    expect(mdEditorWrapper.classes()).not.toContain('fixed')
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').text()).toContain('全屏')
+
+    // 5. 再次进入全屏后，按下 Escape 键应退出全屏
+    await wrapper.find('[data-testid="markdown-toggle-fullscreen"]').trigger('click')
+    await flushPromises()
+    expect(mdEditorWrapper.classes()).toContain('fixed')
+
+    const escEvent = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    window.dispatchEvent(escEvent)
+    await flushPromises()
+
+    expect(mdEditorWrapper.classes()).not.toContain('fixed')
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').text()).toContain('全屏')
+
+    wrapper.unmount()
+  })
+
   it('NoteList 笔记列表在拖拽排序时应渲染高可见度的拖拽插入指示线', async () => {
     const note1 = {
       id: 'note-drag-1',

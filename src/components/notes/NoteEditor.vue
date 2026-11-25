@@ -193,8 +193,30 @@ watch(
   }
 )
 
+// Markdown 纯编辑模式下的编辑区域全屏状态
+const isMarkdownFullscreen = ref(false)
+
+function toggleMarkdownFullscreen() {
+  isMarkdownFullscreen.value = !isMarkdownFullscreen.value
+}
+
+watch(
+  [() => draftFormat.value, () => viewMode.value, () => noteStore.activeNoteId],
+  () => {
+    if (draftFormat.value !== 'markdown' || viewMode.value !== 'edit') {
+      isMarkdownFullscreen.value = false
+    }
+  }
+)
+
 /** 全局按键监听：全屏模式下按 Esc 键快速退出（历史抽屉与冲突弹窗未打开时） */
 function handleWindowKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isMarkdownFullscreen.value) {
+    e.preventDefault()
+    e.stopPropagation()
+    isMarkdownFullscreen.value = false
+    return
+  }
   if (
     e.key === 'Escape' &&
     layoutStore.isEditorFullscreen &&
@@ -1108,12 +1130,22 @@ function handleKeydown(e: KeyboardEvent) {
         @change="handleFileInputChange"
       />
 
-      <!-- Markdown 专属快捷编辑工具栏（普通文本笔记已由 Tiptap 富文本内置工具栏接管，不再展示此单独一行） -->
+      <!-- Markdown 专属编辑与预览区域（包含快捷工具栏与正文编辑/预览区，纯编辑模式下支持全屏） -->
       <div
         v-if="draftFormat === 'markdown'"
-        data-testid="markdown-toolbar"
-        class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-3 py-1.5 sm:px-5 dark:border-slate-800 dark:bg-slate-900/60"
+        data-testid="markdown-editor-wrapper"
+        class="flex min-h-0 flex-1 flex-col w-full"
+        :class="
+          isMarkdownFullscreen
+            ? 'fixed inset-0 z-50 h-screen w-screen bg-white dark:bg-slate-950'
+            : 'overflow-hidden'
+        "
       >
+        <!-- Markdown 专属快捷编辑工具栏（普通文本笔记已由 Tiptap 富文本内置工具栏接管，不再展示此单独一行） -->
+        <div
+          data-testid="markdown-toolbar"
+          class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-3 py-1.5 sm:px-5 dark:border-slate-800 dark:bg-slate-900/60"
+        >
         <div class="flex flex-wrap items-center gap-1">
           <template v-if="viewMode !== 'preview'">
             <button
@@ -1203,8 +1235,58 @@ function handleKeydown(e: KeyboardEvent) {
           </template>
         </div>
 
-        <div class="text-[11px] text-slate-400">
-          {{ t('notes.wordCount', { count: displayWordCount }) }}
+        <!-- 右侧字符统计与纯编辑全屏按钮 -->
+        <div class="ml-auto flex items-center gap-2 pl-2">
+          <span class="text-[11px] text-slate-400 select-none">
+            {{ t('notes.wordCount', { count: displayWordCount }) }}
+          </span>
+          <button
+            v-if="viewMode === 'edit'"
+            type="button"
+            data-testid="markdown-toggle-fullscreen"
+            class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition cursor-pointer"
+            :class="
+              isMarkdownFullscreen
+                ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-500/25 dark:text-rose-300'
+                : 'text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800'
+            "
+            :title="
+              isMarkdownFullscreen
+                ? t('notes.exitFullscreenEsc')
+                : t('notes.fullscreenEditEsc')
+            "
+            @click="toggleMarkdownFullscreen"
+          >
+            <svg
+              v-if="isMarkdownFullscreen"
+              class="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M9 9L4 4m0 0h4m-4 0v4m11 5l5 5m0 0h-4m4 0v-4m-5-11l5-5m0 0h-4m4 0v4M9 15l-5 5m0 0h4m-4 0v-4"
+              />
+            </svg>
+            <svg
+              v-else
+              class="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+              />
+            </svg>
+            <span>{{ isMarkdownFullscreen ? t('notes.exitFullscreen') : t('notes.fullscreen') }}</span>
+          </button>
         </div>
       </div>
 
@@ -1227,15 +1309,15 @@ function handleKeydown(e: KeyboardEvent) {
 
         <!-- Markdown 编辑器（分栏 / 纯编辑 / 纯预览） -->
         <div
-          v-if="draftFormat === 'markdown'"
           class="min-h-0 flex-1"
-          :class="
+          :class="[
             viewMode === 'split'
               ? 'grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1'
               : viewMode === 'edit'
                 ? 'grid grid-cols-1'
-                : 'flex flex-row overflow-hidden'
-          "
+                : 'flex flex-row overflow-hidden',
+            isMarkdownFullscreen ? 'p-4 sm:p-8 overflow-y-auto' : ''
+          ]"
         >
           <textarea
             v-if="viewMode === 'split' || viewMode === 'edit'"
@@ -1243,11 +1325,12 @@ function handleKeydown(e: KeyboardEvent) {
             v-model="draftContent"
             :placeholder="t('notes.contentPlaceholderMarkdown')"
             class="min-h-0 h-full w-full resize-none border-0 bg-transparent p-4 font-mono text-sm leading-7 text-slate-800 outline-none placeholder:text-slate-400 sm:p-6 dark:text-slate-200 dark:placeholder:text-slate-600"
-            :class="
+            :class="[
               viewMode === 'split'
                 ? 'border-b md:border-b-0 md:border-r border-slate-200/80 dark:border-slate-800'
-                : ''
-            "
+                : '',
+              isMarkdownFullscreen ? 'max-w-4xl mx-auto' : ''
+            ]"
             @input="handleEditorInput"
             @paste="handlePaste"
             @keydown="handleKeydown"
@@ -1361,19 +1444,37 @@ function handleKeydown(e: KeyboardEvent) {
             </div>
           </aside>
         </div>
-
-        <!-- Tiptap 富文本编辑器（替代原普通文本 textarea） -->
-        <tiptap-editor
-          v-else
-          ref="tiptapRef"
-          v-model="draftContent"
-          :placeholder="t('notes.contentPlaceholderPlain')"
-          @input="handleEditorInput"
-          @upload-image-request="fileInputRef?.click()"
-          @drop-files="uploadImageFiles"
-          @paste-files="uploadImageFiles"
-        />
       </div>
+    </div>
+
+    <!-- 普通文本笔记模式（使用 Tiptap 富文本编辑器） -->
+    <div
+      v-else
+      class="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+      @dragenter="handleDragOverFiles"
+      @dragover="handleDragOverFiles"
+      @dragleave="isDraggingFile = false"
+      @drop="handleDropFiles"
+    >
+      <!-- 图片拖入高亮浮层 -->
+      <div
+        v-if="isDraggingFile"
+        class="pointer-events-none absolute inset-3 z-20 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-rose-400 bg-rose-50/90 text-rose-600 backdrop-blur-xs dark:bg-rose-950/80 dark:text-rose-200"
+      >
+        <el-icon :size="36" class="mb-2"><Upload /></el-icon>
+        <span class="text-sm font-medium">{{ t('notes.dropImageOverlay') }}</span>
+      </div>
+
+      <tiptap-editor
+        ref="tiptapRef"
+        v-model="draftContent"
+        :placeholder="t('notes.contentPlaceholderPlain')"
+        @input="handleEditorInput"
+        @upload-image-request="fileInputRef?.click()"
+        @drop-files="uploadImageFiles"
+        @paste-files="uploadImageFiles"
+      />
+    </div>
 
       <!-- 一周内历史版本回退抽屉 -->
       <VersionHistoryDrawer
