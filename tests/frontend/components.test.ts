@@ -1582,7 +1582,7 @@ describe('Core Vue Components', () => {
     wrapper.unmount()
   })
 
-  it('Markdown 纯编辑模式下字符统计后应展示全屏编辑按钮，并支持点击与 Esc 键切换全屏', async () => {
+  it('Markdown 边写边预览、纯预览与纯编辑模式下均应展示全屏按钮，纯编辑全屏时编辑区应横向铺满并支持点击与 Esc 键退出', async () => {
     const mdNote = {
       id: 'note-md-fullscreen-test',
       userId: 'u-1',
@@ -1606,35 +1606,55 @@ describe('Core Vue Components', () => {
     const noteStore = useNoteStore()
     await noteStore.loadWorkspace()
 
-    // 1. 分栏模式与纯预览模式下不应显示工具栏内的全屏编辑按钮
+    // 1. 边写边预览（split）模式下应展示全屏按钮并支持切换全屏
     noteStore.setMarkdownViewMode('split')
     const wrapper = mount(NoteEditor, {
       attachTo: document.body,
       global: { plugins: [pinia, i18n, ElementPlus] }
     })
     await flushPromises()
-    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').exists()).toBe(false)
+    const mdEditorWrapper = wrapper.find('[data-testid="markdown-editor-wrapper"]')
+    expect(mdEditorWrapper.exists()).toBe(true)
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').text()).toContain('全屏')
 
+    await wrapper.find('[data-testid="markdown-toggle-fullscreen"]').trigger('click')
+    await flushPromises()
+    expect(mdEditorWrapper.classes()).toContain('fixed')
+    expect(mdEditorWrapper.classes()).toContain('inset-0')
+    expect(mdEditorWrapper.classes()).toContain('z-50')
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').text()).toContain('退出全屏')
+
+    await wrapper.find('[data-testid="markdown-toggle-fullscreen"]').trigger('click')
+    await flushPromises()
+    expect(mdEditorWrapper.classes()).not.toContain('fixed')
+
+    // 2. 纯预览（preview）模式下应展示全屏按钮并正常渲染预览区与目录且支持切换全屏
     noteStore.setMarkdownViewMode('preview')
     await flushPromises()
-    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').exists()).toBe(true)
     expect(wrapper.find('textarea').exists()).toBe(false)
     expect(wrapper.find('.candy-markdown-body').exists()).toBe(true)
     expect(wrapper.find('[data-testid="markdown-toc-sidebar"]').exists()).toBe(true)
 
-    // 2. 切换到纯编辑模式，字符统计后面应展示全屏编辑按钮
+    await wrapper.find('[data-testid="markdown-toggle-fullscreen"]').trigger('click')
+    await flushPromises()
+    expect(mdEditorWrapper.classes()).toContain('fixed')
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').text()).toContain('退出全屏')
+
+    await wrapper.find('[data-testid="markdown-toggle-fullscreen"]').trigger('click')
+    await flushPromises()
+    expect(mdEditorWrapper.classes()).not.toContain('fixed')
+
+    // 3. 切换到纯编辑（edit）模式，点击全屏后编辑区域应横向铺满（无 max-w-4xl 宽度限制）
     noteStore.setMarkdownViewMode('edit')
     await flushPromises()
 
     const fullscreenBtn = wrapper.find('[data-testid="markdown-toggle-fullscreen"]')
     expect(fullscreenBtn.exists()).toBe(true)
     expect(fullscreenBtn.text()).toContain('全屏')
-
-    const mdEditorWrapper = wrapper.find('[data-testid="markdown-editor-wrapper"]')
-    expect(mdEditorWrapper.exists()).toBe(true)
     expect(mdEditorWrapper.classes()).not.toContain('fixed')
 
-    // 3. 点击全屏编辑按钮进入全屏
     await fullscreenBtn.trigger('click')
     await flushPromises()
 
@@ -1643,8 +1663,9 @@ describe('Core Vue Components', () => {
     expect(mdEditorWrapper.classes()).toContain('z-50')
     expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').text()).toContain('退出全屏')
     const textarea = wrapper.find('textarea')
-    expect(textarea.classes()).toContain('max-w-4xl')
-    expect(textarea.classes()).toContain('mx-auto')
+    expect(textarea.classes()).toContain('w-full')
+    expect(textarea.classes()).not.toContain('max-w-4xl')
+    expect(textarea.classes()).not.toContain('mx-auto')
 
     // 4. 再次点击退出全屏
     await wrapper.find('[data-testid="markdown-toggle-fullscreen"]').trigger('click')

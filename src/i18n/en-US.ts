@@ -130,6 +130,7 @@ export default {
     fullscreen: 'Fullscreen',
     fullscreenEdit: 'Fullscreen Edit',
     fullscreenEditEsc: 'Fullscreen Edit (Esc to exit)',
+    fullscreenPreviewEsc: 'Fullscreen Preview (Esc to exit)',
     exitFullscreenEsc: 'Exit Fullscreen (Esc)',
     shareBtn: 'Share Note',
     shareActiveBadge: 'Shared',

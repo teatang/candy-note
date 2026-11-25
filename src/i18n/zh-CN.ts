@@ -130,6 +130,7 @@ export default {
     fullscreen: '全屏',
     fullscreenEdit: '全屏编辑',
     fullscreenEditEsc: '全屏编辑 (Esc退出)',
+    fullscreenPreviewEsc: '全屏预览 (Esc退出)',
     exitFullscreenEsc: '退出全屏 (Esc)',
     shareBtn: '分享笔记',
     shareActiveBadge: '公开分享中',

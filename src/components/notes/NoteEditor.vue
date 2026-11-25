@@ -191,7 +191,7 @@ watch(
   }
 )
 
-// Markdown 纯编辑模式下的编辑区域全屏状态
+// Markdown 编辑与预览模式下的全屏状态（纯编辑 / 边写边预览 / 纯预览均支持）
 const isMarkdownFullscreen = ref(false)
 
 function toggleMarkdownFullscreen() {
@@ -199,11 +199,9 @@ function toggleMarkdownFullscreen() {
 }
 
 watch(
-  [() => draftFormat.value, () => viewMode.value, () => noteStore.activeNoteId],
+  [() => draftFormat.value, () => noteStore.activeNoteId],
   () => {
-    if (draftFormat.value !== 'markdown' || viewMode.value !== 'edit') {
-      isMarkdownFullscreen.value = false
-    }
+    isMarkdownFullscreen.value = false
   }
 )
 
@@ -1099,15 +1097,15 @@ function handleKeydown(e: KeyboardEvent) {
         @change="handleFileInputChange"
       />
 
-      <!-- Markdown 专属编辑与预览区域（包含快捷工具栏与正文编辑/预览区，纯编辑模式下支持全屏） -->
+      <!-- Markdown 专属编辑与预览区域（包含快捷工具栏与正文编辑/预览区，纯编辑/边写边预览/纯预览模式下均支持全屏） -->
       <div
         v-if="draftFormat === 'markdown'"
         data-testid="markdown-editor-wrapper"
-        class="flex min-h-0 flex-1 flex-col w-full"
+        class="flex min-h-0 flex-1 flex-col w-full overflow-hidden"
         :class="
           isMarkdownFullscreen
-            ? 'fixed inset-0 z-50 h-screen w-screen bg-white dark:bg-slate-950'
-            : 'overflow-hidden'
+            ? 'fixed inset-0 z-50 h-screen w-screen bg-white dark:bg-[#070a12]'
+            : ''
         "
       >
         <!-- Markdown 专属快捷编辑工具栏（普通文本笔记已由 Tiptap 富文本内置工具栏接管，不再展示此单独一行） -->
@@ -1204,25 +1202,26 @@ function handleKeydown(e: KeyboardEvent) {
           </template>
         </div>
 
-        <!-- 右侧字符统计与纯编辑全屏按钮 -->
+        <!-- 右侧字符统计与全屏切换按钮（纯编辑 / 边写边预览 / 纯预览均展示） -->
         <div class="ml-auto flex items-center gap-2 pl-2">
           <span class="text-[11px] text-slate-400 select-none">
             {{ t('notes.wordCount', { count: displayWordCount }) }}
           </span>
           <button
-            v-if="viewMode === 'edit'"
             type="button"
             data-testid="markdown-toggle-fullscreen"
             class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition cursor-pointer"
             :class="
               isMarkdownFullscreen
-                ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-500/25 dark:text-rose-300'
+                ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-500/25 dark:text-rose-200 dark:border dark:border-rose-500/40 dark:shadow-[0_0_12px_rgba(244,63,94,0.35)]'
                 : 'text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800'
             "
             :title="
               isMarkdownFullscreen
                 ? t('notes.exitFullscreenEsc')
-                : t('notes.fullscreenEditEsc')
+                : viewMode === 'preview'
+                  ? t('notes.fullscreenPreviewEsc')
+                  : t('notes.fullscreenEditEsc')
             "
             @click="toggleMarkdownFullscreen"
           >
@@ -1281,14 +1280,13 @@ function handleKeydown(e: KeyboardEvent) {
         <!-- Markdown 编辑器（分栏 / 纯编辑 / 纯预览） -->
         <div
           class="min-h-0 flex-1"
-          :class="[
+          :class="
             viewMode === 'split'
               ? 'grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1'
               : viewMode === 'edit'
                 ? 'grid grid-cols-1'
-                : 'flex flex-row overflow-hidden',
-            isMarkdownFullscreen ? 'p-4 sm:p-8 overflow-y-auto' : ''
-          ]"
+                : 'flex flex-row overflow-hidden'
+          "
         >
           <textarea
             v-if="viewMode === 'split' || viewMode === 'edit'"
@@ -1296,12 +1294,11 @@ function handleKeydown(e: KeyboardEvent) {
             v-model="draftContent"
             :placeholder="t('notes.contentPlaceholderMarkdown')"
             class="min-h-0 h-full w-full resize-none border-0 bg-transparent p-4 font-mono text-sm leading-7 text-slate-800 outline-none placeholder:text-slate-400 sm:p-6 dark:text-slate-200 dark:placeholder:text-slate-600"
-            :class="[
+            :class="
               viewMode === 'split'
                 ? 'border-b md:border-b-0 md:border-r border-slate-200/80 dark:border-slate-800'
-                : '',
-              isMarkdownFullscreen ? 'max-w-4xl mx-auto' : ''
-            ]"
+                : ''
+            "
             @input="handleEditorInput"
             @paste="handlePaste"
             @keydown="handleKeydown"
