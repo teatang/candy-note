@@ -278,8 +278,13 @@ describe('Core Vue Components', () => {
     expect(layoutStore.isEditorFullscreen).toBe(false)
     expect(editorMain.classes()).not.toContain('fixed')
 
-    // 点击全屏按钮进入全屏模式
-    await wrapper.find('[data-testid="toggle-fullscreen"]').trigger('click')
+    // 保存按钮旁边的全屏按钮已移除
+    expect(wrapper.find('[data-testid="toggle-fullscreen"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="save-note-btn"]').exists()).toBe(true)
+
+    // 触发全屏模式下状态响应
+    layoutStore.toggleEditorFullscreen(true)
+    await flushPromises()
     expect(layoutStore.isEditorFullscreen).toBe(true)
     expect(editorMain.classes()).toContain('fixed')
     expect(editorMain.classes()).toContain('z-50')
@@ -291,7 +296,8 @@ describe('Core Vue Components', () => {
     expect(editorMain.classes()).not.toContain('fixed')
 
     // 再次全屏后点击移动端返回列表按钮，应同时退出全屏并切回 list 视图
-    await wrapper.find('[data-testid="toggle-fullscreen"]').trigger('click')
+    layoutStore.toggleEditorFullscreen(true)
+    await flushPromises()
     expect(layoutStore.isEditorFullscreen).toBe(true)
     await wrapper.find('[data-testid="mobile-back-to-list"]').trigger('click')
     expect(layoutStore.isEditorFullscreen).toBe(false)

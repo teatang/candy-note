@@ -7,10 +7,8 @@ import {
   DArrowRight,
   Delete,
   Document,
-  FullScreen,
   List,
   Picture,
-  ScaleToOriginal,
   Share,
   Top,
   Upload,
@@ -1030,35 +1028,6 @@ function handleKeydown(e: KeyboardEvent) {
                 <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75"></span>
                 <span class="relative inline-flex h-2 w-2 rounded-full bg-rose-500"></span>
               </span>
-            </el-button>
-          </el-tooltip>
-
-          <!-- 全屏编辑/查看切换按钮（Markdown 与普通文本模式均支持） -->
-          <el-tooltip
-            :content="
-              layoutStore.isEditorFullscreen
-                ? t('notes.exitFullscreen')
-                : t('notes.enterFullscreen')
-            "
-            placement="top"
-          >
-            <el-button
-              data-testid="toggle-fullscreen"
-              size="small"
-              :type="layoutStore.isEditorFullscreen ? 'primary' : 'default'"
-              plain
-              class="!m-0 !rounded-lg"
-              :aria-label="
-                layoutStore.isEditorFullscreen
-                  ? t('notes.exitFullscreen')
-                  : t('notes.enterFullscreen')
-              "
-              @click="layoutStore.toggleEditorFullscreen()"
-            >
-              <el-icon>
-                <ScaleToOriginal v-if="layoutStore.isEditorFullscreen" />
-                <FullScreen v-else />
-              </el-icon>
             </el-button>
           </el-tooltip>
 
