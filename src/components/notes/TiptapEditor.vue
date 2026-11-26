@@ -545,7 +545,7 @@ defineExpose({
           class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition cursor-pointer"
           :class="
             isFullscreen
-              ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-500/25 dark:text-rose-300'
+              ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-500/25 dark:text-rose-200 dark:hover:bg-rose-500/45 dark:hover:text-white dark:border dark:border-rose-500/40 dark:shadow-[0_0_12px_rgba(244,63,94,0.35)]'
               : 'text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800'
           "
           :title="isFullscreen ? '退出全屏 (Esc)' : '全屏编辑 (Esc退出)'"

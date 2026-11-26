@@ -1202,11 +1202,13 @@ describe('Core Vue Components', () => {
     await fullscreenBtn.trigger('click')
     await flushPromises()
 
-    // 验证全屏类名生效
+    // 验证全屏类名生效与夜间悬停高对比度类名
     expect(tiptapWrapper.classes()).toContain('fixed')
     expect(tiptapWrapper.classes()).toContain('inset-0')
     expect(tiptapWrapper.classes()).toContain('z-50')
     expect(fullscreenBtn.text()).toContain('退出全屏')
+    expect(fullscreenBtn.classes()).toContain('dark:hover:bg-rose-500/45')
+    expect(fullscreenBtn.classes()).toContain('dark:hover:text-white')
 
     // 3. 再次点击退出全屏
     await fullscreenBtn.trigger('click')
@@ -1618,12 +1620,30 @@ describe('Core Vue Components', () => {
     expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').text()).toContain('全屏')
 
+    // 验证模式切换按钮位于字数统计与全屏按钮之间
+    const toolbarRight = wrapper.find('[data-testid="markdown-toolbar-right"]')
+    expect(toolbarRight.exists()).toBe(true)
+    const rightChildrenTestIds = Array.from(toolbarRight.element.children).map((el) =>
+      el.getAttribute('data-testid')
+    )
+    expect(rightChildrenTestIds).toEqual([
+      'markdown-word-count',
+      'markdown-view-mode-switcher',
+      'markdown-toggle-fullscreen'
+    ])
+
     await wrapper.find('[data-testid="markdown-toggle-fullscreen"]').trigger('click')
     await flushPromises()
     expect(mdEditorWrapper.classes()).toContain('fixed')
     expect(mdEditorWrapper.classes()).toContain('inset-0')
     expect(mdEditorWrapper.classes()).toContain('z-50')
     expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').text()).toContain('退出全屏')
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').classes()).toContain(
+      'dark:hover:bg-rose-500/45'
+    )
+    expect(wrapper.find('[data-testid="markdown-toggle-fullscreen"]').classes()).toContain(
+      'dark:hover:text-white'
+    )
 
     await wrapper.find('[data-testid="markdown-toggle-fullscreen"]').trigger('click')
     await flushPromises()
@@ -1825,8 +1845,13 @@ describe('Core Vue Components', () => {
     })
     await flushPromises()
 
+    const historyBtn = wrapper.find('[data-testid="history-note-btn"]')
+    expect(historyBtn.exists()).toBe(true)
+    expect(historyBtn.text().trim()).toBe('历史')
+
     const shareBtn = wrapper.find('[data-testid="share-note-btn"]')
     expect(shareBtn.exists()).toBe(true)
+    expect(shareBtn.text().trim()).toBe('分享')
 
     // 点击分享按钮打开分享弹窗
     await shareBtn.trigger('click')

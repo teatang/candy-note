@@ -941,32 +941,6 @@ function handleKeydown(e: KeyboardEvent) {
               {{ t('notes.formatPlain') }}
             </button>
           </div>
-
-          <!-- Markdown 分栏预览模式切换 -->
-          <div
-            v-if="draftFormat === 'markdown'"
-            class="flex items-center rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800"
-          >
-            <button
-              v-for="m in [
-                { key: 'split', label: t('notes.viewModeSplit') },
-                { key: 'edit', label: t('notes.viewModeEdit') },
-                { key: 'preview', label: t('notes.viewModePreview') }
-              ]"
-              :key="m.key"
-              :data-testid="`view-mode-${m.key}`"
-              type="button"
-              class="rounded-md px-2 py-1 text-xs transition"
-              :class="
-                viewMode === m.key
-                  ? 'bg-white font-medium text-slate-900 shadow-xs dark:bg-slate-700 dark:text-slate-100'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-              "
-              @click="viewMode = m.key as MarkdownViewMode"
-            >
-              {{ m.label }}
-            </button>
-          </div>
         </div>
 
         <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -1001,10 +975,19 @@ function handleKeydown(e: KeyboardEvent) {
             </el-button>
           </el-tooltip>
 
-          <el-button size="small" plain class="!m-0 !rounded-lg" @click="historyOpen = true">
-            <el-icon class="lg:mr-1"><Clock /></el-icon>
-            <span class="hidden lg:inline">{{ t('versions.title') }}</span>
-          </el-button>
+          <el-tooltip :content="t('versions.title')" placement="top">
+            <el-button
+              data-testid="history-note-btn"
+              size="small"
+              plain
+              class="!m-0 !rounded-lg"
+              :aria-label="t('versions.title')"
+              @click="historyOpen = true"
+            >
+              <el-icon class="lg:mr-1"><Clock /></el-icon>
+              <span class="hidden lg:inline">{{ t('versions.btnLabel') }}</span>
+            </el-button>
+          </el-tooltip>
 
           <!-- 分享笔记按钮 -->
           <el-tooltip :content="t('notes.shareBtn')" placement="top">
@@ -1018,7 +1001,7 @@ function handleKeydown(e: KeyboardEvent) {
               @click="shareDialogOpen = true"
             >
               <el-icon class="lg:mr-1"><Share /></el-icon>
-              <span class="hidden lg:inline">{{ t('shares.dialogTitle') }}</span>
+              <span class="hidden lg:inline">{{ t('shares.btnLabel') }}</span>
               <span
                 v-if="hasActiveShare"
                 class="absolute -right-0.5 -top-0.5 flex h-2 w-2"
@@ -1202,18 +1185,51 @@ function handleKeydown(e: KeyboardEvent) {
           </template>
         </div>
 
-        <!-- 右侧字符统计与全屏切换按钮（纯编辑 / 边写边预览 / 纯预览均展示） -->
-        <div class="ml-auto flex items-center gap-2 pl-2">
-          <span class="text-[11px] text-slate-400 select-none">
+        <!-- 右侧字符统计、模式切换与全屏切换按钮（纯编辑 / 边写边预览 / 纯预览均展示） -->
+        <div
+          data-testid="markdown-toolbar-right"
+          class="ml-auto flex flex-wrap items-center gap-2 pl-2"
+        >
+          <span
+            data-testid="markdown-word-count"
+            class="text-[11px] text-slate-400 select-none"
+          >
             {{ t('notes.wordCount', { count: displayWordCount }) }}
           </span>
+
+          <!-- Markdown 分栏预览模式切换 -->
+          <div
+            data-testid="markdown-view-mode-switcher"
+            class="flex items-center rounded-lg bg-slate-200/70 p-0.5 dark:bg-slate-800/90 dark:border dark:border-white/[0.06]"
+          >
+            <button
+              v-for="m in [
+                { key: 'split', label: t('notes.viewModeSplit') },
+                { key: 'edit', label: t('notes.viewModeEdit') },
+                { key: 'preview', label: t('notes.viewModePreview') }
+              ]"
+              :key="m.key"
+              :data-testid="`view-mode-${m.key}`"
+              type="button"
+              class="rounded-md px-2 py-0.5 text-xs transition cursor-pointer"
+              :class="
+                viewMode === m.key
+                  ? 'bg-white font-medium text-slate-900 shadow-xs dark:bg-rose-500/20 dark:text-rose-200 dark:shadow-[0_0_10px_rgba(244,63,94,0.25)]'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              "
+              @click="viewMode = m.key as MarkdownViewMode"
+            >
+              {{ m.label }}
+            </button>
+          </div>
+
           <button
             type="button"
             data-testid="markdown-toggle-fullscreen"
             class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition cursor-pointer"
             :class="
               isMarkdownFullscreen
-                ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-500/25 dark:text-rose-200 dark:border dark:border-rose-500/40 dark:shadow-[0_0_12px_rgba(244,63,94,0.35)]'
+                ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-500/25 dark:text-rose-200 dark:hover:bg-rose-500/45 dark:hover:text-white dark:border dark:border-rose-500/40 dark:shadow-[0_0_12px_rgba(244,63,94,0.35)]'
                 : 'text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800'
             "
             :title="

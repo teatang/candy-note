@@ -179,6 +179,7 @@ export default {
   },
   versions: {
     title: 'Version History',
+    btnLabel: 'History',
     subtitle: 'Snapshots from the past 7 days are available for rollback',
     empty: 'No version snapshots found within the past 7 days',
     versionLabel: 'Version v{num}',
@@ -199,6 +200,7 @@ export default {
   },
   shares: {
     dialogTitle: 'Share Note',
+    btnLabel: 'Share',
     dialogDesc: 'Generate a public link so anyone can read this note without signing in.',
     enableShare: 'Enable Public Share',
     enableShareDesc: 'Anyone with the link (and password, if set) can view this note.',

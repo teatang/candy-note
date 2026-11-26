@@ -179,6 +179,7 @@ export default {
   },
   versions: {
     title: '历史版本回退',
+    btnLabel: '历史',
     subtitle: '仅保留最近 7 天（一周）内的编辑快照',
     empty: '最近 7 天内暂无可回退的历史快照',
     versionLabel: '版本 v{num}',
@@ -199,6 +200,7 @@ export default {
   },
   shares: {
     dialogTitle: '分享笔记',
+    btnLabel: '分享',
     dialogDesc: '生成公开链接，让其他人无需登录即可在线阅读这篇笔记。',
     enableShare: '开启公开分享',
     enableShareDesc: '任何人拥有链接（及密码，若开启）均可查看该笔记内容。',
